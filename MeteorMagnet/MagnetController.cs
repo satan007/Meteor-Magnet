@@ -7,9 +7,10 @@ using UnityEngine;
 namespace MeteorMagnet
 {
     /// <summary>
-    /// Scans for incoming meteors, assigns them to the nearest Meteor Magnet that can reach them,
-    /// steers them towards it and, once they land, puts their resources into the magnet's storage
-    /// (Mk2/Mk3, respecting the filter) or drops them in a pile next to it (Mk1, filtered out, storage full).
+    /// Runs the meteor network: scanners detect meteors and lock on to them, then hand them to a free
+    /// magnet inside their link area (around the scanner and linked relays). The magnet pulls the meteor
+    /// in and, once it lands, puts its resources into storage (Mk2/Mk3, respecting the filter) or drops
+    /// them in a pile next to it (Mk1, filtered out, storage full).
     /// </summary>
     internal class MagnetController : MonoBehaviour
     {
@@ -18,31 +19,70 @@ namespace MeteorMagnet
         // If a captured meteor neither crashes nor disappears in this time, deliver the loot anyway.
         const float CaptureTimeout = 90f;
 
-        class Magnet
+        /// <summary>A placed mod building with the modules found in its storage.</summary>
+        abstract class Building
         {
             internal WorldObject wo;
-            internal MagnetTier tier;
             internal Vector3 position;
             internal Inventory inventory;
             internal readonly HashSet<ResonatorEffect> effects = [];
-            /// <summary>Group ids that go to storage; empty = everything.</summary>
-            internal readonly HashSet<string> filter = [];
             /// <summary>Highest tier of each rover upgrade inside the storage.</summary>
             internal readonly Dictionary<RoverUpgradeType, int> upgrades = [];
 
             internal int Upgrade(RoverUpgradeType t) => upgrades.TryGetValue(t, out var v) ? v : 0;
 
-            internal float Radius => tier.WholePlanet
+            internal void ReadModules()
+            {
+                if (inventory == null)
+                {
+                    return;
+                }
+                foreach (var item in inventory.GetInsideWorldObjects())
+                {
+                    var itemId = item?.GetGroup()?.GetId();
+                    var res = Content.ResonatorOf(itemId);
+                    // A module only works in the building it is made for.
+                    if (res != null && res.forScanner == (this is Scanner))
+                    {
+                        effects.Add(res.effect);
+                    }
+                    if (RoverUpgrades.TryGet(itemId, out var type, out var upTier) && upTier > Upgrade(type))
+                    {
+                        upgrades[type] = upTier;
+                    }
+                }
+            }
+        }
+
+        class Magnet : Building
+        {
+            internal MagnetTier tier;
+            /// <summary>Group ids that go to storage; empty = everything.</summary>
+            internal readonly HashSet<string> filter = [];
+            /// <summary>Meteors this magnet is pulling in right now.</summary>
+            internal int busy;
+        }
+
+        class Scanner : Building
+        {
+            internal ScannerTier tier;
+            /// <summary>Meteors this scanner is tracking right now.</summary>
+            internal int tracking;
+            /// <summary>Link area: the scanner's own circle plus those of its linked relays.</summary>
+            internal readonly List<(Vector3 center, float radius)> link = [];
+            /// <summary>Magnets inside the link area.</summary>
+            internal readonly List<Magnet> network = [];
+
+            internal float ScanRadius => tier.WholePlanet
                 ? float.PositiveInfinity
-                : tier.radius * (effects.Contains(ResonatorEffect.RadiusBoost) ? Content.RadiusBoostFactor : 1f);
+                : tier.scanRadius * (effects.Contains(ResonatorEffect.RadiusBoost) ? Content.RadiusBoostFactor : 1f);
+
+            internal float LinkFactor => Upgrade(RoverUpgradeType.Beacon) > 0 ? RoverUpgrades.BeaconLinkFactor : 1f;
 
             internal float LockTime => tier.lockTime
                 * (tier.WholePlanet && effects.Contains(ResonatorEffect.RadiusBoost) ? Content.LensLockFactor : 1f);
 
-            internal float FailChance => tier.failChance;
-
-            /// <summary>Meteors this magnet is locking on to or pulling in right now.</summary>
-            internal int busy;
+            internal int TrackSlots => tier.trackSlots + RoverUpgrades.EquipmentTargets(Upgrade(RoverUpgradeType.Equipment));
         }
 
         class Capture
@@ -57,22 +97,26 @@ namespace MeteorMagnet
             internal bool deflected;
         }
 
-        /// <summary>A meteor a magnet is locking on to; captured once tracked for the magnet's lock time.</summary>
-        class Lock
+        /// <summary>A meteor a scanner is tracking: locking on, then waiting for a free magnet.</summary>
+        class Track
         {
-            internal Magnet magnet;
+            internal WorldObject scanner;
             internal float since;
         }
 
         readonly Dictionary<Asteroid, Capture> captures = [];
-        readonly Dictionary<Asteroid, Lock> locks = [];
+        readonly Dictionary<Asteroid, Track> tracks = [];
         // Meteors already decided (captured, failed or not worth it), so each one is decided only once.
         readonly HashSet<int> seen = [];
         readonly List<Magnet> magnets = [];
+        readonly List<Scanner> scanners = [];
+        readonly List<(WorldObject wo, Vector3 position)> relays = [];
         readonly Dictionary<int, Light> glows = [];
         // Vanilla container sizes by group id, used as the base size of Mk2/Mk3 storage.
         readonly Dictionary<string, int> baseSizes = [];
         static readonly HashSet<string> warnedNoBaseSize = [];
+        // Magnets already reported as outside every link area.
+        readonly HashSet<int> warnedUnlinked = [];
         readonly List<Asteroid> done = [];
 
         float nextScan;
@@ -95,7 +139,8 @@ namespace MeteorMagnet
             if (Time.time >= nextScan)
             {
                 nextScan = Time.time + ScanInterval;
-                RefreshMagnets();
+                RefreshBuildings();
+                BuildNetworks();
                 ScanForMeteors();
             }
 
@@ -171,61 +216,138 @@ namespace MeteorMagnet
             }
         }
 
-        void RefreshMagnets()
+        void RefreshBuildings()
         {
             magnets.Clear();
+            scanners.Clear();
+            relays.Clear();
             var planetHash = CurrentPlanetHash();
             foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
             {
                 var gid = wo?.GetGroup()?.GetId();
                 var tier = Content.TierOf(gid);
-                if (tier == null)
+                var scannerTier = Content.ScannerOf(gid);
+                var relay = Content.IsRelay(gid);
+                if (tier == null && scannerTier == null && !relay)
                 {
                     RememberBaseSize(wo, gid);
                     continue;
                 }
-                if (!wo.GetIsPlaced())
+                if (!wo.GetIsPlaced() || (planetHash != 0 && wo.GetPlanetHash() != planetHash))
                 {
                     continue;
                 }
-                if (planetHash != 0 && wo.GetPlanetHash() != planetHash)
+
+                if (relay)
                 {
-                    continue;
+                    relays.Add((wo, wo.GetPosition()));
+                    Decorate(wo, Content.Relay.color, 1, 0);
                 }
-                var magnet = new Magnet
+                else if (scannerTier != null)
                 {
-                    wo = wo,
-                    tier = tier,
-                    position = wo.GetPosition(),
-                    inventory = tier.hasStorage ? InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId()) : null,
-                };
-                foreach (var g in wo.GetLinkedGroups() ?? [])
-                {
-                    if (g != null)
+                    var scanner = new Scanner
                     {
-                        magnet.filter.Add(g.GetId());
-                    }
+                        wo = wo,
+                        tier = scannerTier,
+                        position = wo.GetPosition(),
+                        inventory = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId()),
+                    };
+                    scanner.ReadModules();
+                    scanners.Add(scanner);
+                    Decorate(wo, scannerTier.color, scannerTier.level, 0);
                 }
-                if (magnet.inventory != null)
+                else
                 {
-                    foreach (var item in magnet.inventory.GetInsideWorldObjects())
+                    var magnet = new Magnet
                     {
-                        var itemId = item?.GetGroup()?.GetId();
-                        var res = Content.ResonatorOf(itemId);
-                        if (res != null)
+                        wo = wo,
+                        tier = tier,
+                        position = wo.GetPosition(),
+                        inventory = tier.hasStorage ? InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId()) : null,
+                    };
+                    foreach (var g in wo.GetLinkedGroups() ?? [])
+                    {
+                        if (g != null)
                         {
-                            magnet.effects.Add(res.effect);
-                        }
-                        if (RoverUpgrades.TryGet(itemId, out var type, out var upTier) && upTier > magnet.Upgrade(type))
-                        {
-                            magnet.upgrades[type] = upTier;
+                            magnet.filter.Add(g.GetId());
                         }
                     }
-                    ApplyStorageSize(magnet);
+                    magnet.ReadModules();
+                    if (magnet.inventory != null)
+                    {
+                        ApplyStorageSize(magnet);
+                    }
+                    magnets.Add(magnet);
+                    Decorate(wo, tier.color, tier.level, magnet.Upgrade(RoverUpgradeType.Lights));
                 }
-                magnets.Add(magnet);
-                Decorate(magnet);
             }
+        }
+
+        /// <summary>
+        /// Works out each scanner's link area (its own circle, grown through chains of relays)
+        /// and which magnets stand inside it. Also warns once about magnets no scanner reaches.
+        /// </summary>
+        void BuildNetworks()
+        {
+            var linked = new HashSet<Magnet>();
+            foreach (var s in scanners)
+            {
+                var factor = s.LinkFactor;
+                s.link.Add((s.position, s.tier.linkRadius * factor));
+
+                // Relays join when they stand inside the area reached so far; repeat until nothing new joins.
+                var joined = new bool[relays.Count];
+                bool grew;
+                do
+                {
+                    grew = false;
+                    for (int i = 0; i < relays.Count; i++)
+                    {
+                        if (!joined[i] && Covers(s.link, relays[i].position))
+                        {
+                            joined[i] = true;
+                            s.link.Add((relays[i].position, Content.Relay.linkRadius * factor));
+                            grew = true;
+                        }
+                    }
+                }
+                while (grew);
+
+                foreach (var m in magnets)
+                {
+                    if (Covers(s.link, m.position))
+                    {
+                        s.network.Add(m);
+                        linked.Add(m);
+                    }
+                }
+            }
+
+            foreach (var m in magnets)
+            {
+                if (!linked.Contains(m) && warnedUnlinked.Add(m.wo.GetId()))
+                {
+                    NotifyText("MeteorMagnet_NoScanner", DataConfig.UiInformationsType.OutInventory);
+                }
+                else if (linked.Contains(m))
+                {
+                    warnedUnlinked.Remove(m.wo.GetId());
+                }
+            }
+        }
+
+        static bool Covers(List<(Vector3 center, float radius)> area, Vector3 p)
+        {
+            foreach (var (center, radius) in area)
+            {
+                var d = center - p;
+                d.y = 0;
+                if (d.sqrMagnitude <= radius * radius)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         void RememberBaseSize(WorldObject wo, string gid)
@@ -251,16 +373,13 @@ namespace MeteorMagnet
             var baseId = magnet.tier.resolvedBaseId;
             if (baseId == null || !baseSizes.TryGetValue(baseId, out var baseSize))
             {
-                var wantsMore = magnet.Upgrade(RoverUpgradeType.Storage) > 0 || magnet.Upgrade(RoverUpgradeType.Equipment) > 0;
-                if (wantsMore && baseId != null && warnedNoBaseSize.Add(baseId))
+                if (magnet.Upgrade(RoverUpgradeType.Storage) > 0 && baseId != null && warnedNoBaseSize.Add(baseId))
                 {
                     Plugin.LogWarning("Storage upgrade needs at least one ordinary " + baseId + " built on this planet to know the base size.");
                 }
                 return;
             }
-            var wanted = baseSize
-                + RoverUpgrades.StorageSlots(magnet.Upgrade(RoverUpgradeType.Storage))
-                + RoverUpgrades.EquipmentSlots(magnet.Upgrade(RoverUpgradeType.Equipment));
+            var wanted = baseSize + RoverUpgrades.StorageSlots(magnet.Upgrade(RoverUpgradeType.Storage));
             // Never shrink below what is stored right now.
             wanted = Mathf.Max(wanted, magnet.inventory.GetInsideWorldObjects().Count);
             if (magnet.inventory.GetSize() != wanted)
@@ -278,12 +397,12 @@ namespace MeteorMagnet
 
         void ScanForMeteors()
         {
-            if (magnets.Count == 0)
+            if (scanners.Count == 0 || magnets.Count == 0)
             {
-                locks.Clear();
+                tracks.Clear();
                 return;
             }
-            CountBusy();
+            CountLoad();
             var alive = new HashSet<Asteroid>();
             foreach (var asteroid in FindObjectsByType<Asteroid>(FindObjectsSortMode.None))
             {
@@ -293,43 +412,53 @@ namespace MeteorMagnet
                 }
                 if (Plugin.HasCrashed(asteroid))
                 {
-                    if (locks.Remove(asteroid))
+                    if (tracks.Remove(asteroid))
                     {
-                        Plugin.Log("Meteor crashed before the lock completed.");
+                        Plugin.Log("Meteor crashed while tracked (lock not done or no free magnet).");
                     }
                     continue;
                 }
                 alive.Add(asteroid);
-                // Barren meteors (plain rocks) can only be caught with the Prime resonator.
+                // Barren meteors (plain rocks) are only seen by scanners with the Prime resonator.
                 var barren = asteroid.groupsSelected == null || asteroid.groupsSelected.Count == 0;
                 var rare = !barren && IsRare(asteroid);
-
-                locks.TryGetValue(asteroid, out var current);
                 var landing = PredictLanding(asteroid.transform);
-                var magnet = FindMagnetFor(landing, barren, rare, current);
+
+                tracks.TryGetValue(asteroid, out var track);
+                var scanner = track != null ? FindScanner(track.scanner) : null;
+                if (scanner == null || !CanSee(scanner, landing, barren, rare))
+                {
+                    if (track != null)
+                    {
+                        tracks.Remove(asteroid);
+                    }
+                    // Pick up a new target: the nearest scanner that sees it and has a free tracking slot.
+                    scanner = PickScanner(landing, barren, rare);
+                    if (scanner != null)
+                    {
+                        tracks[asteroid] = new Track { scanner = scanner.wo, since = Time.time };
+                        scanner.tracking++;
+                    }
+                    continue;
+                }
+
+                // Lock on first, then wait for a magnet with a free slot.
+                var lockTime = scanner.LockTime * (rare ? Content.RareLockFactor : 1f);
+                if (Time.time - track.since < lockTime)
+                {
+                    continue;
+                }
+                var magnet = PickMagnet(scanner, landing);
                 if (magnet == null)
                 {
-                    // Out of range (for now): drop any lock in progress.
-                    locks.Remove(asteroid);
                     continue;
                 }
-
-                // Lock on first: the meteor must stay tracked for the magnet's lock time.
-                if (current == null || current.magnet.wo != magnet.wo)
-                {
-                    locks[asteroid] = new Lock { magnet = magnet, since = Time.time };
-                    magnet.busy++;
-                    continue;
-                }
-                var lockTime = magnet.LockTime * (rare ? Content.RareLockFactor : 1f);
-                if (Time.time - current.since < lockTime)
-                {
-                    continue;
-                }
-                locks.Remove(asteroid);
+                tracks.Remove(asteroid);
+                scanner.tracking--;
                 seen.Add(asteroid.GetInstanceID());
+                magnet.busy++;
 
-                var failChance = magnet.FailChance + (rare ? Content.RareFailBonus : 0f);
+                var failChance = magnet.tier.failChance + (rare ? Content.RareFailBonus : 0f);
                 if (UnityEngine.Random.value < failChance)
                 {
                     if (UnityEngine.Random.value < Content.BadFailShare)
@@ -338,6 +467,7 @@ namespace MeteorMagnet
                     }
                     else
                     {
+                        magnet.busy--;
                         Plugin.Log("Capture slipped, meteor keeps its course.");
                         NotifyText("MeteorMagnet_Slipped", DataConfig.UiInformationsType.OutInventory);
                     }
@@ -347,6 +477,7 @@ namespace MeteorMagnet
                 var loot = barren ? RollBarrenLoot(asteroid, magnet) : RollLoot(asteroid, magnet);
                 if (loot.Count == 0)
                 {
+                    magnet.busy--;
                     continue;
                 }
 
@@ -383,9 +514,9 @@ namespace MeteorMagnet
                 Plugin.Log("Captured meteor with " + loot.Count + " resources for " + magnet.tier.id + " #" + magnet.wo.GetId());
             }
 
-            // Forget locks on meteors that are gone.
+            // Forget tracks of meteors that are gone.
             var stale = new List<Asteroid>();
-            foreach (var a in locks.Keys)
+            foreach (var a in tracks.Keys)
             {
                 if (a == null || !alive.Contains(a))
                 {
@@ -394,7 +525,7 @@ namespace MeteorMagnet
             }
             foreach (var a in stale)
             {
-                locks.Remove(a);
+                tracks.Remove(a);
             }
 
             if (seen.Count > 4096)
@@ -403,28 +534,108 @@ namespace MeteorMagnet
             }
         }
 
-        /// <summary>
-        /// How many meteors each magnet is busy with: locks in progress plus captured meteors still in the air.
-        /// This is what keeps a magnet from catching a whole rain of small meteors at once.
-        /// </summary>
-        void CountBusy()
+        Scanner FindScanner(WorldObject wo)
         {
-            var byWo = new Dictionary<WorldObject, Magnet>();
+            foreach (var s in scanners)
+            {
+                if (s.wo == wo)
+                {
+                    return s;
+                }
+            }
+            return null;
+        }
+
+        static bool CanSee(Scanner s, Vector3 landing, bool barren, bool rare)
+        {
+            if (barren && !s.effects.Contains(ResonatorEffect.CaptureBarren))
+            {
+                return false;
+            }
+            if (rare && !s.tier.seesRare)
+            {
+                return false;
+            }
+            if (s.network.Count == 0)
+            {
+                return false;
+            }
+            var d = s.position - landing;
+            d.y = 0;
+            return d.magnitude <= s.ScanRadius;
+        }
+
+        Scanner PickScanner(Vector3 landing, bool barren, bool rare)
+        {
+            Scanner best = null;
+            var bestDist = float.MaxValue;
+            foreach (var s in scanners)
+            {
+                if (s.tracking >= s.TrackSlots || !CanSee(s, landing, barren, rare))
+                {
+                    continue;
+                }
+                var dist = Vector3.Distance(s.position, landing);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = s;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// The magnet in the scanner's link area with a free slot, nearest to where the meteor would land.
+        /// A magnet with full storage still takes meteors; the overflow is dropped next to it.
+        /// </summary>
+        static Magnet PickMagnet(Scanner scanner, Vector3 landing)
+        {
+            Magnet best = null;
+            var bestDist = float.MaxValue;
+            foreach (var m in scanner.network)
+            {
+                if (m.busy >= m.tier.captureSlots)
+                {
+                    continue;
+                }
+                var dist = Vector3.Distance(m.position, landing);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = m;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Current load: meteors each scanner is tracking and each magnet is pulling in.
+        /// Limited slots are what keep a rain of small meteors from being caught whole.
+        /// </summary>
+        void CountLoad()
+        {
+            var scannerByWo = new Dictionary<WorldObject, Scanner>();
+            foreach (var s in scanners)
+            {
+                scannerByWo[s.wo] = s;
+            }
+            foreach (var kv in tracks)
+            {
+                if (kv.Key != null && scannerByWo.TryGetValue(kv.Value.scanner, out var s))
+                {
+                    s.tracking++;
+                }
+            }
+            var magnetByWo = new Dictionary<WorldObject, Magnet>();
             foreach (var m in magnets)
             {
-                byWo[m.wo] = m;
-            }
-            foreach (var kv in locks)
-            {
-                if (kv.Key != null && byWo.TryGetValue(kv.Value.magnet.wo, out var m))
-                {
-                    m.busy++;
-                }
+                magnetByWo[m.wo] = m;
             }
             foreach (var kv in captures)
             {
                 if (kv.Key != null && !kv.Value.deflected && !Plugin.HasCrashed(kv.Key)
-                    && byWo.TryGetValue(kv.Value.magnet.wo, out var m))
+                    && magnetByWo.TryGetValue(kv.Value.magnet.wo, out var m))
                 {
                     m.busy++;
                 }
@@ -503,46 +714,6 @@ namespace MeteorMagnet
                 return p + f * ((p.y - groundY) / -f.y);
             }
             return p;
-        }
-
-        /// <summary>
-        /// Picks the closest magnet whose radius covers the landing point.
-        /// A full magnet still catches meteors; the overflow is dropped next to it.
-        /// </summary>
-        Magnet FindMagnetFor(Vector3 landing, bool barren, bool rare, Lock current)
-        {
-            Magnet best = null;
-            var bestDist = float.MaxValue;
-            foreach (var m in magnets)
-            {
-                if (barren && !m.effects.Contains(ResonatorEffect.CaptureBarren))
-                {
-                    continue;
-                }
-                if (rare && !m.tier.catchesRare)
-                {
-                    continue;
-                }
-                // A magnet keeps the meteor it is already locking on to; new ones need a free slot.
-                var keeps = current != null && current.magnet.wo == m.wo;
-                if (!keeps && m.busy >= m.tier.maxTargets)
-                {
-                    continue;
-                }
-                var d = m.position - landing;
-                d.y = 0;
-                var dist = d.magnitude;
-                if (dist > m.Radius)
-                {
-                    continue;
-                }
-                if (dist < bestDist)
-                {
-                    bestDist = dist;
-                    best = m;
-                }
-            }
-            return best;
         }
 
         static List<Group> RollLoot(Asteroid asteroid, Magnet magnet)
@@ -725,9 +896,9 @@ namespace MeteorMagnet
                 }
             }
 
-            if (dropped != 0 && c.magnet.Upgrade(RoverUpgradeType.Beacon) > 0)
+            if (dropped != 0 && c.magnet.Upgrade(RoverUpgradeType.Lights) > 0)
             {
-                MarkPile(c.pile, c.magnet.Upgrade(RoverUpgradeType.Beacon));
+                MarkPile(c.pile, c.magnet.Upgrade(RoverUpgradeType.Lights));
             }
 
             if (Plugin.ShowNotification && c.loot.Count != 0)
@@ -737,7 +908,7 @@ namespace MeteorMagnet
         }
 
         /// <summary>
-        /// Beacon upgrade: a tall light over the loot pile for a while, so it is easy to spot.
+        /// Lights upgrade: a tall light over the loot pile for a while, so it is easy to spot.
         /// </summary>
         static void MarkPile(Vector3 pile, int tier)
         {
@@ -877,12 +1048,12 @@ namespace MeteorMagnet
         }
 
         /// <summary>
-        /// Tints the placed magnet in its tier color and adds a glow so it does not look like a plain container.
-        /// The Lights upgrade makes the glow brighter and wider.
+        /// Tints a placed mod building in its color and adds a glow so it does not look like a plain container.
+        /// The Lights upgrade makes a magnet's glow brighter and wider.
         /// </summary>
-        void Decorate(Magnet magnet)
+        void Decorate(WorldObject wo, Color color, int level, int lights)
         {
-            var go = magnet.wo.GetGameObject();
+            var go = wo.GetGameObject();
             if (go == null)
             {
                 return;
@@ -890,7 +1061,6 @@ namespace MeteorMagnet
             var key = go.GetInstanceID();
             if (!glows.TryGetValue(key, out var light) || light == null)
             {
-                var color = magnet.tier.color;
                 foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
                 {
                     foreach (var m in r.materials)
@@ -913,8 +1083,6 @@ namespace MeteorMagnet
                 light.color = color;
                 glows[key] = light;
             }
-            var level = magnet.tier.level;
-            var lights = magnet.Upgrade(RoverUpgradeType.Lights);
             light.range = 6f + 3f * level + 8f * lights;
             light.intensity = 2f + level + 3f * lights;
         }

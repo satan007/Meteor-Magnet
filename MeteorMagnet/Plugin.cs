@@ -40,7 +40,7 @@ namespace MeteorMagnet
         static ConfigEntry<string> roverUpgradeItems;
 
         static readonly Dictionary<string, ConfigEntry<string>> recipes = [];
-        static readonly Dictionary<string, ConfigEntry<float>> tierUnlocks = [];
+        static readonly Dictionary<string, ConfigEntry<float>> unlocks = [];
 
         static AccessTools.FieldRef<Asteroid, bool> fAsteroidHasCrashed;
 
@@ -65,11 +65,10 @@ namespace MeteorMagnet
             leaveAsteroidBody = Config.Bind("Visual", "LeaveAsteroidBody", false, "Оставлять ли тело метеорита/кратер на месте падения.");
             shakeOnImpact = Config.Bind("Visual", "ShakeOnImpact", false, "Тряска камеры при падении захваченного метеорита.");
 
-            foreach (var tier in Content.Tiers)
+            foreach (var def in Content.Buildings)
             {
-                var section = "Tier Mk" + tier.level;
-                recipes[tier.id] = Config.Bind(section, "Recipe", tier.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются.");
-                tierUnlocks[tier.id] = Config.Bind(section, "UnlockAtTerraformation", tier.unlockTi, "Индекс терраформации (Ti), при котором открывается этот тир. 0 = доступно сразу.");
+                recipes[def.id] = Config.Bind(def.ConfigSection, "Recipe", def.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются.");
+                unlocks[def.id] = Config.Bind(def.ConfigSection, "UnlockAtTerraformation", def.unlockTi, "Индекс терраформации (Ti), при котором открывается эта постройка. 0 = доступно сразу.");
             }
             roverUpgradeItems = Config.Bind("RoverUpgrades", "Items", "",
                 "Улучшения ровера определяются автоматически по английскому названию. Если какое-то не определилось, впишите его id вручную: "
@@ -141,14 +140,14 @@ namespace MeteorMagnet
 
             var existing = ___groupsData.Where(g => g != null).Select(g => g.id).ToHashSet();
 
-            foreach (var tier in Content.Tiers)
+            foreach (var def in Content.Buildings)
             {
-                if (existing.Contains(tier.id))
+                if (existing.Contains(def.id))
                 {
                     continue;
                 }
                 GroupDataConstructible baseGroup = null;
-                foreach (var baseId in tier.baseGroupIds)
+                foreach (var baseId in def.baseGroupIds)
                 {
                     baseGroup = ___groupsData.Find(g => g != null && g.id == baseId) as GroupDataConstructible;
                     if (baseGroup != null)
@@ -158,16 +157,16 @@ namespace MeteorMagnet
                 }
                 if (baseGroup == null)
                 {
-                    logger.LogError("No base building for " + tier.id + ", it will not be available.");
+                    logger.LogError("No base building for " + def.id + ", it will not be available.");
                     continue;
                 }
 
-                tier.resolvedBaseId = baseGroup.id;
-                var magnet = Instantiate(baseGroup);
-                SetupClone(magnet, tier.id, ___groupsData);
-                magnet.unlockingValue = tierUnlocks[tier.id].Value;
-                ___groupsData.Add(magnet);
-                Log("Registered building " + tier.id + " (base " + baseGroup.id + ")");
+                def.resolvedBaseId = baseGroup.id;
+                var building = Instantiate(baseGroup);
+                SetupClone(building, def.id, ___groupsData);
+                building.unlockingValue = unlocks[def.id].Value;
+                ___groupsData.Add(building);
+                Log("Registered building " + def.id + " (base " + baseGroup.id + ")");
             }
 
             if (___groupsData.Find(g => g != null && g.id == ResonatorBaseGroupId) is not GroupDataItem resonatorBase)
@@ -242,7 +241,7 @@ namespace MeteorMagnet
         [HarmonyPatch(typeof(UnlockedGroupsHandler), "SetUnlockedGroups")]
         static void UnlockedGroupsHandler_SetUnlockedGroups(NetworkList<int> ____unlockedGroups)
         {
-            var ids = Content.Tiers.Where(t => tierUnlocks[t.id].Value <= 0f).Select(t => t.id)
+            var ids = Content.Buildings.Where(b => unlocks[b.id].Value <= 0f).Select(b => b.id)
                 .Concat(Content.Resonators.Select(r => r.id));
             foreach (var id in ids)
             {
@@ -267,10 +266,10 @@ namespace MeteorMagnet
             {
                 var ru = kv.Key == "russian";
                 var dict = kv.Value;
-                foreach (var t in Content.Tiers)
+                foreach (var b in Content.Buildings)
                 {
-                    dict["GROUP_NAME_" + t.id] = ru ? t.nameRu : t.nameEn;
-                    dict["GROUP_DESC_" + t.id] = ru ? t.descRu : t.descEn;
+                    dict["GROUP_NAME_" + b.id] = ru ? b.nameRu : b.nameEn;
+                    dict["GROUP_DESC_" + b.id] = ru ? b.descRu : b.descEn;
                 }
                 foreach (var r in Content.Resonators)
                 {
@@ -282,6 +281,7 @@ namespace MeteorMagnet
                 dict["MeteorMagnet_Slipped"] = ru ? "Захват сорвался, метеорит падает как обычно" : "Capture slipped, the meteor falls as usual";
                 dict["MeteorMagnet_Deflected"] = ru ? "Сбой поля! Метеорит отброшен в сторону" : "Field failure! The meteor was thrown away";
                 dict["MeteorMagnet_Dropped"] = ru ? "рядом с устройством" : "dropped nearby";
+                dict["MeteorMagnet_NoScanner"] = ru ? "Гравитационный захват не в зоне связи сканера или реле — он не будет работать" : "Meteor Magnet is outside any scanner or relay link area - it will not work";
                 dict["MeteorMagnet_FilterTitle"] = ru ? "Фильтр гравитационного захвата" : "Meteor Magnet filter";
                 dict["MeteorMagnet_FilterHint"] = ru
                     ? "Отмеченные ресурсы идут в хранилище, остальные падают рядом. Ничего не отмечено — в хранилище идёт всё."

@@ -11,15 +11,15 @@ namespace MeteorMagnet
         Speed,
         /// <summary>More storage slots.</summary>
         Storage,
-        /// <summary>Brighter, wider glow of the magnet.</summary>
+        /// <summary>Magnet: brighter glow, and a light over the loot pile so it is easy to find.</summary>
         Lights,
-        /// <summary>A light marks the loot pile so it is easy to find.</summary>
+        /// <summary>Scanner: wider link area (scanner and its relays).</summary>
         Beacon,
         /// <summary>No effect yet.</summary>
         Oxygen,
         /// <summary>Loot arrives right at capture instead of after the impact.</summary>
         Jetpack,
-        /// <summary>A few extra storage slots, like the rover's extra equipment slots.</summary>
+        /// <summary>Scanner: tracks more meteors at once.</summary>
         Equipment,
         /// <summary>Filtered-out and overflow loot goes to nearby containers.</summary>
         Logistics,
@@ -35,12 +35,15 @@ namespace MeteorMagnet
     {
         internal const float SpeedTurnRatePerTier = 1f;
 
-        // Same numbers as on the rover (wiki): Inventory T1..T3 = +18/+34/+58, Equipment T1..T2 = +3/+8.
+        internal const float BeaconLinkFactor = 1.5f;
+
+        // Same numbers as on the rover (wiki): Inventory T1..T3 = +18/+34/+58.
         static readonly int[] storageSlots = [0, 18, 34, 58];
-        static readonly int[] equipmentSlots = [0, 3, 8];
+        // Equipment T1..T2: extra scanner targets.
+        static readonly int[] equipmentTargets = [0, 1, 2];
 
         internal static int StorageSlots(int tier) => storageSlots[Math.Min(tier, storageSlots.Length - 1)];
-        internal static int EquipmentSlots(int tier) => equipmentSlots[Math.Min(tier, equipmentSlots.Length - 1)];
+        internal static int EquipmentTargets(int tier) => equipmentTargets[Math.Min(tier, equipmentTargets.Length - 1)];
 
         static readonly Dictionary<string, (RoverUpgradeType type, int tier)> byKeyword = [];
         static readonly Dictionary<string, (RoverUpgradeType type, int tier)> byName = [];
