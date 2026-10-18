@@ -196,6 +196,7 @@ namespace MeteorMagnet
                 var item = Instantiate(resonatorBase);
                 SetupClone(item, res.id, ___groupsData);
                 item.unlockingValue = 0f;
+                item.craftableInList = [res.craftStation];
                 ___groupsData.Add(item);
                 Log("Registered resonator " + res.id);
             }

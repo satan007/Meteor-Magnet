@@ -1,3 +1,4 @@
+using SpaceCraft;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -108,6 +109,8 @@ namespace MeteorMagnet
         internal bool forScanner;
         internal string planet;
         internal ResonatorEffect effect;
+        /// <summary>Crafting station: planet resonators on T2, advanced modules on T3.</summary>
+        internal DataConfig.CraftableIn craftStation = DataConfig.CraftableIn.CraftStationT2;
         /// <summary>Config section for the recipe; planet resonators by default.</summary>
         internal string ConfigSection => planet != null ? "Resonator " + planet : "Module " + effect;
         internal string recipe;
@@ -372,6 +375,7 @@ namespace MeteorMagnet
             new Resonator
             {
                 id = "MeteorSpaceLink", planet = null, forScanner = true,
+                craftStation = DataConfig.CraftableIn.CraftStationT3,
                 effect = ResonatorEffect.SpaceLink,
                 recipe = "Alloy,Alloy,Osmium,Iridium,Iridium,Silicon,Silicon",
                 color = new Color(0.75f, 0.6f, 1f),
