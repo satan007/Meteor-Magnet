@@ -724,10 +724,13 @@ namespace MeteorMagnet
 
         static List<Group> RollLoot(Asteroid asteroid, Magnet magnet)
         {
-            // numberOfResourceInDebris is how many of the debris pieces are resources
-            // (in-game: debrisNumber=25, numberOfResourceInDebris=1 for a rain meteor).
+            // numberOfResourceInDebris is how many of the debris pieces are resources. In-game values:
+            // basic ores 4, Uranium 5, Osmium 5, Iridium 6, Super Alloy 1.
             var n = asteroid.numberOfResourceInDebris;
-            var count = n;
+            // Vanilla drops vary around this number (Iridium with 6 gives "up to 10"): roll 50%..150% of it.
+            var count = n >= 1f
+                ? UnityEngine.Random.Range(Mathf.CeilToInt(n * 0.5f), Mathf.FloorToInt(n * 1.5f) + 1)
+                : n;
             Plugin.Log("Meteor debris=" + asteroid.debrisNumber + ", resourceInDebris=" + n
                 + ", debrisSize=" + asteroid.debrisSize + ", scale=" + asteroid.transform.localScale.x.ToString("0.00")
                 + ", resources=" + string.Join("/", asteroid.groupsSelected.ConvertAll(g => g != null ? g.id : "?")));

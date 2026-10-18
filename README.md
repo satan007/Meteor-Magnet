@@ -191,9 +191,9 @@ dotnet build -c Release -p:GameDir="C:\Program Files (x86)\Steam\steamapps\commo
 Мод пока не проверялся в игре. Имена классов и полей игры взяты из открытых модов
 (akarnokd/ThePlanetCrafterMods, aedenthorn/PlanetCrafterMods), но некоторые вещи стоит проверить:
 
-- **Количество лута.** По логу из игры у метеорита дождя `debrisNumber=25`, `numberOfResourceInDebris=1`.
-  Мод считает `numberOfResourceInDebris` числом ресурсов с метеорита (обычно 1). Если в ванилле с такого метеорита
-  падает больше, подстрой `LootMultiplier`.
+- **Количество лута** берётся из метеорита: поле `numberOfResourceInDebris` (по логам из игры: базовые руды 4,
+  уран 5, осмий 5, иридий 6, Super Alloy 1) со случайным разбросом 50–150%, как в обычной игре. Общий множитель —
+  `LootMultiplier`.
 - **Притягивание.** Если метеорит двигается не по `transform.forward` и не через `Rigidbody`, он упадёт на прежнее
   место, но ресурсы всё равно придут в устройство.
 - **ID ресурсов для резонаторов** (`Dolomite`, `Bauxite`, `Uraninite`, `Selenium`, `BalzarQuartz` — так, с опечаткой, в игре,
