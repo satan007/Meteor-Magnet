@@ -45,8 +45,12 @@ namespace MeteorMagnet
     /// </summary>
     internal class ScannerTier : BuildingDef
     {
-        /// <summary>Detection radius in meters; PositiveInfinity = whole planet.</summary>
+        /// <summary>Detection radius in meters.</summary>
         internal float scanRadius;
+        /// <summary>
+        /// With a Space Link module and a satellite in orbit over the planet, the scanner sees the whole planet.
+        /// </summary>
+        internal bool usesSatellite;
         /// <summary>Magnets within this radius of the scanner (or of a linked relay) get its targets.</summary>
         internal float linkRadius;
         /// <summary>How many meteors the scanner tracks at once (locking on or waiting for a magnet).</summary>
@@ -56,7 +60,6 @@ namespace MeteorMagnet
         /// <summary>Whether meteors with rare resources are detected at all.</summary>
         internal bool seesRare;
 
-        internal bool WholePlanet => float.IsPositiveInfinity(scanRadius);
         internal override string ConfigSection => "Scanner Mk" + level;
     }
 
@@ -85,6 +88,8 @@ namespace MeteorMagnet
         Vortex,
         /// <summary>Every meteor gives at least one of each resource type it carries.</summary>
         EveryResourceType,
+        /// <summary>Scanner Mk3: with a satellite in orbit over the planet, scans the whole planet.</summary>
+        SpaceLink,
     }
 
     /// <summary>
@@ -99,8 +104,19 @@ namespace MeteorMagnet
         internal bool forScanner;
         internal string planet;
         internal ResonatorEffect effect;
+        /// <summary>Config section for the recipe; planet resonators by default.</summary>
+        internal string ConfigSection => planet != null ? "Resonator " + planet : "Module " + effect;
         internal string recipe;
         internal Color color;
+        internal string nameRu, nameEn, descRu, descEn;
+    }
+
+    /// <summary>The satellite rocket item; cloned from one of the game's rockets.</summary>
+    internal class SatelliteRocketDef
+    {
+        internal string id;
+        internal string recipe;
+        internal float unlockTi;
         internal string nameRu, nameEn, descRu, descEn;
     }
 
@@ -225,7 +241,8 @@ namespace MeteorMagnet
             {
                 id = "MeteorScanner3", level = 3,
                 baseGroupIds = ["Container1"],
-                scanRadius = float.PositiveInfinity,
+                scanRadius = 2000f,
+                usesSatellite = true,
                 linkRadius = 150f,
                 trackSlots = 6,
                 lockTime = 1.5f,
@@ -235,8 +252,8 @@ namespace MeteorMagnet
                 color = new Color(0.6f, 0.95f, 1f),
                 nameRu = "Метеорный сканер Mk3",
                 nameEn = "Meteor Scanner Mk3",
-                descRu = "Замечает метеориты по всей планете, ведёт 6 целей и передаёт их захватам в радиусе связи 150 м. Модули сканера кладутся внутрь.",
-                descEn = "Detects meteors all over the planet, tracks 6 targets and hands them to magnets within a 150 m link radius. Scanner modules go inside.",
+                descRu = "Замечает метеориты в радиусе 2000 м, ведёт 6 целей и передаёт их захватам в радиусе связи 150 м. С модулем космической связи и спутником на орбите видит всю планету. Модули сканера кладутся внутрь.",
+                descEn = "Detects meteors within 2000 m, tracks 6 targets and hands them to magnets within a 150 m link radius. With a Space Link module and a satellite in orbit it sees the whole planet. Scanner modules go inside.",
             },
         ];
 
@@ -338,7 +355,33 @@ namespace MeteorMagnet
                 descRu = "Модуль захвата Mk2/Mk3. С каждого метеорита гарантированно приходит хотя бы по одному ресурсу каждого вида, который он несёт.",
                 descEn = "Magnet Mk2/Mk3 module. Every meteor gives at least one of each resource type it carries.",
             },
+            new Resonator
+            {
+                id = "MeteorSpaceLink", planet = null, forScanner = true,
+                effect = ResonatorEffect.SpaceLink,
+                recipe = "Alloy,Alloy,Osmium,Iridium,Iridium,Silicon,Silicon",
+                color = new Color(0.75f, 0.6f, 1f),
+                nameRu = "Модуль космической связи",
+                nameEn = "Space Link Module",
+                descRu = "Модуль сканера Mk3. Если над планетой запущена метеорная спутниковая ракета, сканер видит метеориты по всей планете.",
+                descEn = "Scanner Mk3 module. With a meteor satellite rocket launched over the planet, the scanner sees meteors all over the planet.",
+            },
         ];
+
+        /// <summary>
+        /// The satellite rocket: crafted and launched like other rockets. Once launched over a planet,
+        /// Mk3 scanners with a Space Link module there scan the whole planet. One launch per planet is enough.
+        /// </summary>
+        internal static readonly SatelliteRocketDef SatelliteRocket = new()
+        {
+            id = "RocketMeteorSatellite",
+            recipe = "CosmicQuartz,CosmicQuartz,CosmicQuartz,Alloy,Alloy,Alloy,Rod-uranium,Rod-uranium,Osmium",
+            unlockTi = 100000000f,
+            nameRu = "Метеорная спутниковая ракета",
+            nameEn = "Meteor Satellite Rocket",
+            descRu = "Выводит на орбиту спутник слежения за метеоритами. Сканеры Mk3 с модулем космической связи на этой планете видят метеориты по всей планете. Достаточно одного запуска на планету.",
+            descEn = "Puts a meteor tracking satellite into orbit. Mk3 scanners with a Space Link module on this planet see meteors all over the planet. One launch per planet is enough.",
+        };
 
         static Dictionary<string, MagnetTier> tierById;
         static Dictionary<string, ScannerTier> scannerById;

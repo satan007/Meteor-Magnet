@@ -76,13 +76,18 @@ namespace MeteorMagnet
 
             foreach (var res in Content.Resonators)
             {
-                recipes[res.id] = Config.Bind("Resonator " + res.planet, "Recipe", res.recipe, "Рецепт резонатора: id предметов через запятую. Неизвестные id пропускаются.");
+                recipes[res.id] = Config.Bind(res.ConfigSection, "Recipe", res.recipe, "Рецепт модуля: id предметов через запятую. Неизвестные id пропускаются.");
             }
+
+            var rocket = Content.SatelliteRocket;
+            recipes[rocket.id] = Config.Bind("Satellite Rocket", "Recipe", rocket.recipe, "Рецепт спутниковой ракеты: id предметов через запятую. Неизвестные id пропускаются.");
+            unlocks[rocket.id] = Config.Bind("Satellite Rocket", "UnlockAtTerraformation", rocket.unlockTi, "Индекс терраформации (Ti), при котором открывается ракета. 0 = доступно сразу.");
 
             fAsteroidHasCrashed = TryFieldRef<Asteroid, bool>("hasCrashed");
 
             var harmony = new Harmony("satan007.theplanetcrafter.meteormagnet");
             harmony.PatchAll(typeof(Plugin));
+            harmony.PatchAll(typeof(Satellite));
 
             var go = new GameObject("MeteorMagnet_Controller");
             DontDestroyOnLoad(go);
@@ -169,6 +174,8 @@ namespace MeteorMagnet
                 Log("Registered building " + def.id + " (base " + baseGroup.id + ")");
             }
 
+            RegisterSatelliteRocket(___groupsData, existing);
+
             if (___groupsData.Find(g => g != null && g.id == ResonatorBaseGroupId) is not GroupDataItem resonatorBase)
             {
                 logger.LogError("Base item " + ResonatorBaseGroupId + " not found, resonators will not be available.");
@@ -186,6 +193,43 @@ namespace MeteorMagnet
                 ___groupsData.Add(item);
                 Log("Registered resonator " + res.id);
             }
+        }
+
+        /// <summary>
+        /// The satellite rocket is a clone of one of the game's rockets, so it is crafted and launched the same way.
+        /// Its terraformation multipliers are zeroed: launching it only puts the meteor satellite into orbit.
+        /// </summary>
+        static void RegisterSatelliteRocket(List<GroupData> groupsData, HashSet<string> existing)
+        {
+            var id = Content.SatelliteRocket.id;
+            if (existing.Contains(id))
+            {
+                return;
+            }
+            var baseRocket = groupsData.Find(g => g != null && g.id != null
+                && g.id.StartsWith("Rocket", StringComparison.Ordinal)
+                && !g.id.StartsWith("RocketReactor", StringComparison.Ordinal));
+            if (baseRocket == null)
+            {
+                logger.LogError("No rocket found to base the satellite rocket on; it will not be available.");
+                return;
+            }
+            var rocket = Instantiate(baseRocket);
+            SetupClone(rocket, id, groupsData);
+            rocket.unlockingValue = unlocks[id].Value;
+
+            for (var t = rocket.GetType(); t != null && t != typeof(ScriptableObject); t = t.BaseType)
+            {
+                foreach (var f in AccessTools.GetDeclaredFields(t))
+                {
+                    if (f.FieldType == typeof(float) && f.Name.IndexOf("multiplier", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        f.SetValue(rocket, 0f);
+                    }
+                }
+            }
+            groupsData.Add(rocket);
+            Log("Registered satellite rocket (base " + baseRocket.id + ")");
         }
 
         static void SetupClone(GroupData gd, string id, List<GroupData> groupsData)
@@ -242,6 +286,7 @@ namespace MeteorMagnet
         static void UnlockedGroupsHandler_SetUnlockedGroups(NetworkList<int> ____unlockedGroups)
         {
             var ids = Content.Buildings.Where(b => unlocks[b.id].Value <= 0f).Select(b => b.id)
+                .Concat(unlocks[Content.SatelliteRocket.id].Value <= 0f ? new[] { Content.SatelliteRocket.id } : Array.Empty<string>())
                 .Concat(Content.Resonators.Select(r => r.id));
             foreach (var id in ids)
             {
@@ -276,6 +321,10 @@ namespace MeteorMagnet
                     dict["GROUP_NAME_" + r.id] = ru ? r.nameRu : r.nameEn;
                     dict["GROUP_DESC_" + r.id] = ru ? r.descRu : r.descEn;
                 }
+                var sat = Content.SatelliteRocket;
+                dict["GROUP_NAME_" + sat.id] = ru ? sat.nameRu : sat.nameEn;
+                dict["GROUP_DESC_" + sat.id] = ru ? sat.descRu : sat.descEn;
+                dict["MeteorMagnet_SatelliteLaunched"] = ru ? "Метеорный спутник выведен на орбиту" : "Meteor satellite is in orbit";
                 dict["MeteorMagnet_Captured"] = ru ? "Метеорит захвачен" : "Meteor captured";
                 dict["MeteorMagnet_Stored"] = ru ? "в хранилище" : "stored";
                 dict["MeteorMagnet_Slipped"] = ru ? "Захват сорвался, метеорит падает как обычно" : "Capture slipped, the meteor falls as usual";

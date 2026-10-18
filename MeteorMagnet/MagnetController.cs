@@ -73,14 +73,17 @@ namespace MeteorMagnet
             /// <summary>Magnets inside the link area.</summary>
             internal readonly List<Magnet> network = [];
 
-            internal float ScanRadius => tier.WholePlanet
+            /// <summary>Mk3 with a Space Link module over a planet that has a satellite in orbit.</summary>
+            internal bool planetWide;
+
+            internal float ScanRadius => planetWide
                 ? float.PositiveInfinity
                 : tier.scanRadius * (effects.Contains(ResonatorEffect.RadiusBoost) ? Content.RadiusBoostFactor : 1f);
 
             internal float LinkFactor => Upgrade(RoverUpgradeType.Beacon) > 0 ? RoverUpgrades.BeaconLinkFactor : 1f;
 
             internal float LockTime => tier.lockTime
-                * (tier.WholePlanet && effects.Contains(ResonatorEffect.RadiusBoost) ? Content.LensLockFactor : 1f);
+                * (planetWide && effects.Contains(ResonatorEffect.RadiusBoost) ? Content.LensLockFactor : 1f);
 
             internal int TrackSlots => tier.trackSlots + RoverUpgrades.EquipmentTargets(Upgrade(RoverUpgradeType.Equipment));
         }
@@ -253,6 +256,9 @@ namespace MeteorMagnet
                         inventory = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId()),
                     };
                     scanner.ReadModules();
+                    scanner.planetWide = scannerTier.usesSatellite
+                        && scanner.effects.Contains(ResonatorEffect.SpaceLink)
+                        && Satellite.IsLaunched(planetHash != 0 ? planetHash : wo.GetPlanetHash());
                     scanners.Add(scanner);
                     Decorate(wo, scannerTier.color, scannerTier.level, 0);
                 }
