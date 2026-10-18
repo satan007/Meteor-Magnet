@@ -40,6 +40,9 @@ namespace MeteorMagnet
                 * (tier.WholePlanet && effects.Contains(ResonatorEffect.RadiusBoost) ? Content.LensLockFactor : 1f);
 
             internal float FailChance => tier.failChance;
+
+            /// <summary>Meteors this magnet is locking on to or pulling in right now.</summary>
+            internal int busy;
         }
 
         class Capture
@@ -280,6 +283,7 @@ namespace MeteorMagnet
                 locks.Clear();
                 return;
             }
+            CountBusy();
             var alive = new HashSet<Asteroid>();
             foreach (var asteroid in FindObjectsByType<Asteroid>(FindObjectsSortMode.None))
             {
@@ -298,9 +302,11 @@ namespace MeteorMagnet
                 alive.Add(asteroid);
                 // Barren meteors (plain rocks) can only be caught with the Prime resonator.
                 var barren = asteroid.groupsSelected == null || asteroid.groupsSelected.Count == 0;
+                var rare = !barren && IsRare(asteroid);
 
+                locks.TryGetValue(asteroid, out var current);
                 var landing = PredictLanding(asteroid.transform);
-                var magnet = FindMagnetFor(landing, barren);
+                var magnet = FindMagnetFor(landing, barren, rare, current);
                 if (magnet == null)
                 {
                     // Out of range (for now): drop any lock in progress.
@@ -309,19 +315,22 @@ namespace MeteorMagnet
                 }
 
                 // Lock on first: the meteor must stay tracked for the magnet's lock time.
-                if (!locks.TryGetValue(asteroid, out var lk) || lk.magnet.wo != magnet.wo)
+                if (current == null || current.magnet.wo != magnet.wo)
                 {
                     locks[asteroid] = new Lock { magnet = magnet, since = Time.time };
+                    magnet.busy++;
                     continue;
                 }
-                if (Time.time - lk.since < magnet.LockTime)
+                var lockTime = magnet.LockTime * (rare ? Content.RareLockFactor : 1f);
+                if (Time.time - current.since < lockTime)
                 {
                     continue;
                 }
                 locks.Remove(asteroid);
                 seen.Add(asteroid.GetInstanceID());
 
-                if (UnityEngine.Random.value < magnet.FailChance)
+                var failChance = magnet.FailChance + (rare ? Content.RareFailBonus : 0f);
+                if (UnityEngine.Random.value < failChance)
                 {
                     if (UnityEngine.Random.value < Content.BadFailShare)
                     {
@@ -395,6 +404,46 @@ namespace MeteorMagnet
         }
 
         /// <summary>
+        /// How many meteors each magnet is busy with: locks in progress plus captured meteors still in the air.
+        /// This is what keeps a magnet from catching a whole rain of small meteors at once.
+        /// </summary>
+        void CountBusy()
+        {
+            var byWo = new Dictionary<WorldObject, Magnet>();
+            foreach (var m in magnets)
+            {
+                byWo[m.wo] = m;
+            }
+            foreach (var kv in locks)
+            {
+                if (kv.Key != null && byWo.TryGetValue(kv.Value.magnet.wo, out var m))
+                {
+                    m.busy++;
+                }
+            }
+            foreach (var kv in captures)
+            {
+                if (kv.Key != null && !kv.Value.deflected && !Plugin.HasCrashed(kv.Key)
+                    && byWo.TryGetValue(kv.Value.magnet.wo, out var m))
+                {
+                    m.busy++;
+                }
+            }
+        }
+
+        static bool IsRare(Asteroid asteroid)
+        {
+            foreach (var gd in asteroid.groupsSelected)
+            {
+                if (gd != null && Content.RareResources.Contains(gd.id))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Bad failure: the field kicks the meteor off sideways or back, far away from the magnet.
         /// It keeps its vanilla resources and impact, just somewhere else.
         /// </summary>
@@ -460,13 +509,23 @@ namespace MeteorMagnet
         /// Picks the closest magnet whose radius covers the landing point.
         /// A full magnet still catches meteors; the overflow is dropped next to it.
         /// </summary>
-        Magnet FindMagnetFor(Vector3 landing, bool barren)
+        Magnet FindMagnetFor(Vector3 landing, bool barren, bool rare, Lock current)
         {
             Magnet best = null;
             var bestDist = float.MaxValue;
             foreach (var m in magnets)
             {
                 if (barren && !m.effects.Contains(ResonatorEffect.CaptureBarren))
+                {
+                    continue;
+                }
+                if (rare && !m.tier.catchesRare)
+                {
+                    continue;
+                }
+                // A magnet keeps the meteor it is already locking on to; new ones need a free slot.
+                var keeps = current != null && current.magnet.wo == m.wo;
+                if (!keeps && m.busy >= m.tier.maxTargets)
                 {
                     continue;
                 }

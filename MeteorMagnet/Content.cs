@@ -22,6 +22,10 @@ namespace MeteorMagnet
         internal float lockTime;
         /// <summary>Chance that a capture fails when the lock completes.</summary>
         internal float failChance;
+        /// <summary>How many meteors the magnet can lock on to / hold in flight at once.</summary>
+        internal int maxTargets;
+        /// <summary>Whether meteors with rare resources can be caught at all.</summary>
+        internal bool catchesRare;
         internal string recipe;
         internal float unlockTi;
         internal Color color;
@@ -77,6 +81,18 @@ namespace MeteorMagnet
         internal const float VortexRadius = 30f;
         internal const float VortexInterval = 2f;
 
+        /// <summary>
+        /// Rare meteor resources: such meteors take longer to lock on, fail more often and Mk1 cannot catch them.
+        /// A meteor is rare if any of its resources is in this list.
+        /// </summary>
+        internal static readonly HashSet<string> RareResources =
+        [
+            "Alloy", "Osmium",
+            "PulsarQuartz", "PulsarShard", "SolarQuartz", "MagnetarQuartz", "BalzarQuartz", "QuasarQuartz", "CosmicQuartz",
+        ];
+        internal const float RareLockFactor = 1.5f;
+        internal const float RareFailBonus = 0.10f;
+
         /// <summary>What a barren meteor turns into with the Prime resonator.</summary>
         internal static readonly string[] BarrenLoot = ["Iron", "Titanium", "Magnesium", "Silicon", "Cobalt", "Aluminium"];
 
@@ -90,6 +106,8 @@ namespace MeteorMagnet
                 radius = 150f,
                 lockTime = 2.5f,
                 failChance = 0.20f,
+                maxTargets = 1,
+                catchesRare = false,
                 recipe = "Iron,Iron,Iron,Titanium,Titanium,Magnesium,Magnesium,Silicon",
                 unlockTi = 0f,
                 color = new Color(0.35f, 0.55f, 1f),
@@ -106,6 +124,8 @@ namespace MeteorMagnet
                 radius = 500f,
                 lockTime = 2.0f,
                 failChance = 0.12f,
+                maxTargets = 2,
+                catchesRare = true,
                 recipe = "Alloy,Alloy,Aluminium,Aluminium,Cobalt,Cobalt,Titanium,Titanium",
                 unlockTi = 1000000f,
                 color = new Color(0.55f, 0.25f, 1f),
@@ -122,6 +142,8 @@ namespace MeteorMagnet
                 radius = float.PositiveInfinity,
                 lockTime = 1.5f,
                 failChance = 0.08f,
+                maxTargets = 3,
+                catchesRare = true,
                 recipe = "Alloy,Alloy,Alloy,Alloy,Rod-uranium,Rod-uranium,Iridium,Iridium,Zeolite,Zeolite",
                 unlockTi = 100000000f,
                 color = new Color(1f, 0.3f, 0.75f),
