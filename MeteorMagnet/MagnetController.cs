@@ -31,7 +31,16 @@ namespace MeteorMagnet
 
             /// <summary>Power draw of this building, the power saver included.</summary>
             internal float Draw => Plugin.EnergyUse(wo.GetGroup().GetId())
-                * (effects.Contains(ResonatorEffect.PowerSaver) ? Content.PowerSaverFactor : 1f);
+                * (effects.Contains(ResonatorEffect.PowerSaver) ? Weaken(Content.PowerSaverFactor) : 1f);
+
+            /// <summary>Emergency expansion inside: twice the module slots, every other module at half strength.</summary>
+            internal bool Weakened => effects.Contains(ResonatorEffect.EmergencyExpansion);
+
+            /// <summary>Strength of the other modules: 1, or 0.5 with the emergency expansion.</summary>
+            internal float Strength => Weakened ? Content.EmergencyStrength : 1f;
+
+            /// <summary>A module multiplier at the building's strength: x2 becomes x1.5, x0.5 becomes x0.75.</summary>
+            internal float Weaken(float factor) => 1f + (factor - 1f) * Strength;
 
             /// <summary>Highest tier of each kind of player equipment in the module slots.</summary>
             internal readonly Dictionary<GearType, int> gear = [];
@@ -139,6 +148,31 @@ namespace MeteorMagnet
                     moduleReport.Add("equipment INACTIVE (" + string.Join(", ", gear.Keys) + "): no Equipment Simulation module here");
                     gear.Clear();
                 }
+
+                // Emergency expansion: tiers are halved, rounded down (a T1 item stops working).
+                if (Weakened)
+                {
+                    moduleReport.Add("EMERGENCY EXPANSION: module slots x2, other modules at " + (Content.EmergencyStrength * 100f).ToString("0") + "%");
+                    HalveTiers(upgrades, "rover");
+                    HalveTiers(gear, "equipment");
+                }
+            }
+
+            void HalveTiers<T>(Dictionary<T, int> tiers, string what)
+            {
+                foreach (var key in new List<T>(tiers.Keys))
+                {
+                    var halved = Mathf.FloorToInt(tiers[key] * Content.EmergencyStrength);
+                    moduleReport.Add("  " + what + " " + key + " T" + tiers[key] + " -> " + (halved == 0 ? "off" : "T" + halved));
+                    if (halved == 0)
+                    {
+                        tiers.Remove(key);
+                    }
+                    else
+                    {
+                        tiers[key] = halved;
+                    }
+                }
             }
         }
 
@@ -150,7 +184,7 @@ namespace MeteorMagnet
             /// <summary>Meteors this magnet is pulling in right now.</summary>
             internal int busy;
 
-            internal int CaptureSlots => tier.captureSlots + (effects.Contains(ResonatorEffect.ExtraCaptureSlot) ? 1 : 0);
+            internal int CaptureSlots => tier.captureSlots + (effects.Contains(ResonatorEffect.ExtraCaptureSlot) ? Mathf.FloorToInt(Strength) : 0);
         }
 
         class Scanner : Building
@@ -168,17 +202,18 @@ namespace MeteorMagnet
             /// <summary>Mk3 with a Space Link module over a planet that has a satellite in orbit.</summary>
             internal bool planetWide;
 
-            internal float ScanRadius => planetWide
-                ? float.PositiveInfinity
-                : tier.scanRadius * (effects.Contains(ResonatorEffect.RadiusBoost) ? Content.RadiusBoostFactor : 1f)
-                    * (1f + PlayerGear.OxygenRadiusPerTier * Gear(GearType.OxygenTank));
+            internal float ScanRadius => planetWide ? float.PositiveInfinity : BaseRadius;
+
+            /// <summary>Scan radius without the satellite.</summary>
+            internal float BaseRadius => tier.scanRadius * (effects.Contains(ResonatorEffect.RadiusBoost) ? Weaken(Content.RadiusBoostFactor) : 1f)
+                * (1f + PlayerGear.OxygenRadiusPerTier * Gear(GearType.OxygenTank));
 
             internal float LinkFactor => Upgrade(RoverUpgradeType.Beacon) > 0 ? RoverUpgrades.BeaconLinkFactor : 1f;
 
             internal float LockTime => tier.lockTime
-                * (effects.Contains(ResonatorEffect.FasterLock) ? Content.FasterLockFactor : 1f)
+                * (effects.Contains(ResonatorEffect.FasterLock) ? Weaken(Content.FasterLockFactor) : 1f)
                 * Mathf.Max(0.1f, 1f - PlayerGear.BootsLockPerTier * Gear(GearType.Boots))
-                * (planetWide && effects.Contains(ResonatorEffect.RadiusBoost) ? Content.LensLockFactor : 1f);
+                * (planetWide && effects.Contains(ResonatorEffect.RadiusBoost) ? Weaken(Content.LensLockFactor) : 1f);
 
             internal int TrackSlots => tier.trackSlots + RoverUpgrades.EquipmentTargets(Upgrade(RoverUpgradeType.Equipment));
         }
@@ -348,7 +383,7 @@ namespace MeteorMagnet
                 var pos = grabable.transform.position;
                 foreach (var m in vortexMagnets)
                 {
-                    if (Vector3.Distance(pos, m.position) > Content.VortexRadius)
+                    if (Vector3.Distance(pos, m.position) > Content.VortexRadius * m.Strength)
                     {
                         continue;
                     }
@@ -434,7 +469,7 @@ namespace MeteorMagnet
                         }
                     }
                     scanner.ReadModules();
-                    ModuleSlots.SetExtraSlots(wo.GetId(), scanner.Gear(GearType.Exoskeleton));
+                    ModuleSlots.SetExtraSlots(wo.GetId(), ExtraModuleSlots(scanner, scannerTier.moduleSlots));
                     LogModules(scanner);
                     scanner.planetWide = scannerTier.usesSatellite
                         && scanner.effects.Contains(ResonatorEffect.SpaceLink)
@@ -460,7 +495,7 @@ namespace MeteorMagnet
                     }
                     magnet.moduleInventory = ModuleSlots.Get(wo, tier.moduleSlots);
                     magnet.ReadModules();
-                    ModuleSlots.SetExtraSlots(wo.GetId(), magnet.Gear(GearType.Exoskeleton));
+                    ModuleSlots.SetExtraSlots(wo.GetId(), ExtraModuleSlots(magnet, tier.moduleSlots));
                     LogModules(magnet);
                     if (magnet.inventory != null)
                     {
@@ -619,23 +654,23 @@ namespace MeteorMagnet
             {
                 var stabilized = m.effects.Contains(ResonatorEffect.Stabilizer);
                 lines.Add("  => holds " + m.CaptureSlots + " meteors, fail chance " + (FailChance(m, false) * 100f).ToString("0") + "% ("
-                    + (FailChance(m, true) * 100f).ToString("0") + "% for rare)" + (stabilized ? ", halved by the field stabilizer" : ""));
+                    + (FailChance(m, true) * 100f).ToString("0") + "% for rare)" + (stabilized ? ", field stabilizer x" + m.Weaken(Content.StabilizerFailFactor).ToString("0.##") : ""));
                 var loot = new List<string>();
                 if (m.effects.Contains(ResonatorEffect.LootBonus))
                 {
-                    loot.Add("x" + Content.LootBonusFactor + " amount");
+                    loot.Add("x" + m.Weaken(Content.LootBonusFactor).ToString("0.##") + " amount");
                 }
                 if (m.effects.Contains(ResonatorEffect.DuplicateChance))
                 {
-                    loot.Add((Content.DuplicateChance * 100f).ToString("0") + "% duplicate per item");
+                    loot.Add((Content.DuplicateChance * m.Strength * 100f).ToString("0.#") + "% duplicate per item");
                 }
                 if (m.effects.Contains(ResonatorEffect.EveryResourceType))
                 {
-                    loot.Add("at least one of each resource type");
+                    loot.Add("at least one of each resource type" + (m.Weakened ? " (on half of the meteors)" : ""));
                 }
                 if (m.effects.Contains(ResonatorEffect.Vortex))
                 {
-                    loot.Add("vortex pulls loose resources within " + Content.VortexRadius.ToString("0") + " m");
+                    loot.Add("vortex pulls loose resources within " + (Content.VortexRadius * m.Strength).ToString("0") + " m");
                 }
                 lines.Add("  => loot: " + (loot.Count == 0 ? "as the meteor carries" : string.Join(", ", loot)));
                 lines.Add("  => pull turn speed x" + (1f + RoverUpgrades.SpeedTurnRatePerTier * m.Upgrade(RoverUpgradeType.Speed))
@@ -985,7 +1020,7 @@ namespace MeteorMagnet
                 {
                     why = "filtered out (looks for " + string.Join("/", s.filter) + ")";
                 }
-                else if (barren && !s.effects.Contains(ResonatorEffect.CaptureBarren))
+                else if (barren && !SeesBarren(s, asteroid))
                 {
                     why = "barren meteor, needs the Prime resonator";
                 }
@@ -997,9 +1032,10 @@ namespace MeteorMagnet
                 {
                     why = "no magnet in its link area";
                 }
-                else if (HorizontalDistance(s.position, landing) > s.ScanRadius)
+                else if (HorizontalDistance(s.position, landing) > Radius(s, asteroid))
                 {
-                    why = "out of range " + HorizontalDistance(s.position, landing).ToString("0") + " > " + s.ScanRadius.ToString("0") + " m";
+                    why = "out of range " + HorizontalDistance(s.position, landing).ToString("0") + " > " + Radius(s, asteroid).ToString("0") + " m"
+                        + (s.planetWide && s.Weakened ? " (whole-planet scan at half strength misses this one)" : "");
                 }
                 else if (s.tracking >= s.TrackSlots)
                 {
@@ -1248,7 +1284,7 @@ namespace MeteorMagnet
             {
                 return false;
             }
-            if (barren && !s.effects.Contains(ResonatorEffect.CaptureBarren))
+            if (barren && !SeesBarren(s, asteroid))
             {
                 return false;
             }
@@ -1262,7 +1298,19 @@ namespace MeteorMagnet
             }
             var d = s.position - landing;
             d.y = 0;
-            return d.magnitude <= s.ScanRadius;
+            return d.magnitude <= Radius(s, asteroid);
+        }
+
+        /// <summary>Prime resonator; at half strength it sees every other barren meteor.</summary>
+        static bool SeesBarren(Scanner s, Asteroid asteroid)
+        {
+            return s.effects.Contains(ResonatorEffect.CaptureBarren) && (!s.Weakened || Coin(asteroid));
+        }
+
+        /// <summary>Scan radius for this meteor; a weakened whole-planet scanner sees every other meteor beyond its own radius.</summary>
+        static float Radius(Scanner s, Asteroid asteroid)
+        {
+            return s.planetWide && s.Weakened && !Coin(asteroid) ? s.BaseRadius : s.ScanRadius;
         }
 
         Scanner PickScanner(Asteroid asteroid, Vector3 landing, bool barren, bool rare)
@@ -1383,10 +1431,26 @@ namespace MeteorMagnet
             return Mathf.Clamp01(Plugin.CoreDropChance + PlayerGear.DeconstructCorePerTier * m.Gear(GearType.DeconstructChip));
         }
 
+        /// <summary>Module slots on top of the building's own: the exoskeleton, then x2 for the emergency expansion.</summary>
+        static int ExtraModuleSlots(Building b, int baseSlots)
+        {
+            var total = baseSlots + b.Gear(GearType.Exoskeleton);
+            if (b.Weakened)
+            {
+                total *= 2;
+            }
+            return total - baseSlots;
+        }
+
+        /// <summary>
+        /// Half-strength on/off effects: a meteor gets it or not, decided once per meteor (the same on every scan).
+        /// </summary>
+        static bool Coin(Asteroid a) => ((uint)a.GetInstanceID() * 2654435761u >> 16 & 1u) == 0u;
+
         static float FailChance(Magnet m, bool rare)
         {
             var chance = m.tier.failChance + (rare ? Content.RareFailBonus : 0f);
-            return m.effects.Contains(ResonatorEffect.Stabilizer) ? chance * Content.StabilizerFailFactor : chance;
+            return m.effects.Contains(ResonatorEffect.Stabilizer) ? chance * m.Weaken(Content.StabilizerFailFactor) : chance;
         }
 
         static bool IsRare(Asteroid asteroid)
@@ -1569,7 +1633,7 @@ namespace MeteorMagnet
             var mult = Plugin.LootMultiplier;
             if (magnet.effects.Contains(ResonatorEffect.LootBonus))
             {
-                mult *= Content.LootBonusFactor;
+                mult *= magnet.Weaken(Content.LootBonusFactor);
             }
             mult *= 1f + PlayerGear.MiningLootPerTier * magnet.Gear(GearType.MiningChip);
             var total = Mathf.Max(Plugin.MinLootPerMeteor, Mathf.RoundToInt(baseCount * mult));
@@ -1578,7 +1642,7 @@ namespace MeteorMagnet
             var duplicates = magnet.effects.Contains(ResonatorEffect.DuplicateChance);
 
             var picks = new List<Group>();
-            if (magnet.effects.Contains(ResonatorEffect.EveryResourceType))
+            if (magnet.effects.Contains(ResonatorEffect.EveryResourceType) && UnityEngine.Random.value < magnet.Strength)
             {
                 // One of each distinct type first, the rest is random as usual.
                 var distinct = new HashSet<string>();
@@ -1599,7 +1663,7 @@ namespace MeteorMagnet
             foreach (var g in picks)
             {
                 result.Add(g);
-                if (duplicates && UnityEngine.Random.value < Content.DuplicateChance)
+                if (duplicates && UnityEngine.Random.value < Content.DuplicateChance * magnet.Strength)
                 {
                     result.Add(g);
                     extraDuplicates++;

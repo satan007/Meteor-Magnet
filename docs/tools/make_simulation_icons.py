@@ -48,3 +48,17 @@ def helmet(g, cx, cy, c):
 
 cartridge(rover, (255, 170, 80, 255), 0.07).save(f"{out}/MeteorRoverSimulation.png")
 cartridge(helmet, (225, 230, 255, 255), 0.65, 0.2).save(f"{out}/MeteorGearSimulation.png")
+
+
+def split(g, cx, cy, c):
+    """Emergency expansion: one slot splitting into two, with a warning bar."""
+    g.rectangle((cx - 7, cy - 30, cx + 7, cy - 12), outline=c, width=3)
+    g.line((cx, cy - 12, cx, cy - 2), fill=c, width=3)
+    g.line((cx - 12, cy - 2, cx + 12, cy - 2), fill=c, width=3)
+    g.rectangle((cx - 19, cy + 2, cx - 5, cy + 20), outline=c, width=3)
+    g.rectangle((cx + 5, cy + 2, cx + 19, cy + 20), outline=c, width=3)
+    for x in range(cx - 18, cx + 18, 8):
+        g.polygon([(x, cy + 34), (x + 4, cy + 26), (x + 8, cy + 26), (x + 4, cy + 34)], fill=c)
+
+
+cartridge(split, (255, 80, 70, 255), 0.0).save(f"{out}/MeteorEmergencyExpansion.png")

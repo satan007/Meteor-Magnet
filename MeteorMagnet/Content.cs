@@ -138,6 +138,8 @@ namespace MeteorMagnet
         RoverSimulation,
         /// <summary>Scanner or magnet: player equipment in the same building works only with it.</summary>
         GearSimulation,
+        /// <summary>Scanner or magnet: twice the module slots, every other module at half strength.</summary>
+        EmergencyExpansion,
     }
 
     /// <summary>
@@ -219,6 +221,8 @@ namespace MeteorMagnet
         internal const float PowerSaverFactor = 0.6f;
         /// <summary>Lock-on time multiplier of a scanner with the guidance module.</summary>
         internal const float FasterLockFactor = 0.7f;
+        /// <summary>Strength of the other modules next to the emergency expansion; tiers are rounded down.</summary>
+        internal const float EmergencyStrength = 0.5f;
         /// <summary>How long a mark over an uncaught meteor stays, seconds.</summary>
         internal const float MarkerLifetime = 120f;
         internal const float RareFailBonus = 0.10f;
@@ -562,6 +566,17 @@ namespace MeteorMagnet
                 nameEn = "Equipment Simulation Module",
                 descRu = "Модуль сканера или захвата. Эмулирует скафандр: без него экипировка игрока в этой постройке не работает.",
                 descEn = "Scanner or magnet module. Emulates a spacesuit: player equipment in this building works only with it.",
+            },
+            new Resonator
+            {
+                id = "MeteorEmergencyExpansion", planet = null, forBoth = true,
+                effect = ResonatorEffect.EmergencyExpansion,
+                recipe = "MeteorCore,MeteorCore,Alloy,Iron,Iron,Silicon,Silicon",
+                color = new Color(1f, 0.2f, 0.2f),
+                nameRu = "Модуль экстренного расширения",
+                nameEn = "Emergency Expansion Module",
+                descRu = "Модуль сканера или захвата. Удваивает число ячеек модулей, но все остальные модули в постройке работают вдвое слабее (тиры округляются вниз: T1 перестаёт работать).",
+                descEn = "Scanner or magnet module. Doubles the module slots, but every other module in the building works at half strength (tiers round down: T1 stops working).",
             },
         ];
 
