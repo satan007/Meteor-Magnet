@@ -8,7 +8,8 @@ namespace MeteorMagnet
 {
     /// <summary>
     /// Scans for incoming meteors, assigns them to the nearest Meteor Magnet that can reach them,
-    /// steers them towards it and, once they land, puts their resources into the magnet's inventory.
+    /// steers them towards it and, once they land, puts their resources into the magnet's storage
+    /// (Mk2/Mk3, respecting the filter) or drops them in a pile next to it (Mk1, filtered out, storage full).
     /// </summary>
     internal class MagnetController : MonoBehaviour
     {
@@ -24,6 +25,8 @@ namespace MeteorMagnet
             internal Vector3 position;
             internal Inventory inventory;
             internal readonly HashSet<ResonatorEffect> effects = [];
+            /// <summary>Group ids that go to storage; empty = everything.</summary>
+            internal readonly HashSet<string> filter = [];
 
             internal float Radius => tier.WholePlanet
                 ? float.PositiveInfinity
@@ -34,6 +37,7 @@ namespace MeteorMagnet
         {
             internal Magnet magnet;
             internal Vector3 target;
+            internal Vector3 pile;
             internal List<Group> loot;
             internal float capturedAt;
         }
@@ -93,8 +97,15 @@ namespace MeteorMagnet
                     wo = wo,
                     tier = tier,
                     position = wo.GetPosition(),
-                    inventory = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId()),
+                    inventory = tier.hasStorage ? InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId()) : null,
                 };
+                foreach (var g in wo.GetLinkedGroups() ?? [])
+                {
+                    if (g != null)
+                    {
+                        magnet.filter.Add(g.GetId());
+                    }
+                }
                 if (magnet.inventory != null)
                 {
                     foreach (var item in magnet.inventory.GetInsideWorldObjects())
@@ -170,6 +181,7 @@ namespace MeteorMagnet
                 {
                     magnet = magnet,
                     target = magnet.position + away.normalized * Plugin.ImpactOffset,
+                    pile = magnet.position + away.normalized * 3f + Vector3.up * 1.5f,
                     loot = loot,
                     capturedAt = Time.time,
                 };
@@ -215,7 +227,8 @@ namespace MeteorMagnet
         }
 
         /// <summary>
-        /// Picks the closest magnet whose radius covers the landing point and which still has room.
+        /// Picks the closest magnet whose radius covers the landing point.
+        /// A full magnet still catches meteors; the overflow is dropped next to it.
         /// </summary>
         Magnet FindMagnetFor(Vector3 landing, bool barren)
         {
@@ -231,10 +244,6 @@ namespace MeteorMagnet
                 d.y = 0;
                 var dist = d.magnitude;
                 if (dist > m.Radius)
-                {
-                    continue;
-                }
-                if (m.inventory == null || m.inventory.IsFull())
                 {
                     continue;
                 }
@@ -361,31 +370,55 @@ namespace MeteorMagnet
 
         static void Deliver(Capture c)
         {
-            // Re-fetch: the magnet may have been deconstructed while the meteor was falling.
-            var inv = InventoriesHandler.Instance.GetInventoryById(c.magnet.wo.GetLinkedInventoryId());
-            if (inv == null)
+            Inventory inv = null;
+            if (c.magnet.tier.hasStorage)
             {
-                Plugin.LogWarning("Magnet " + c.magnet.wo.GetId() + " has no inventory; loot lost.");
-                return;
+                // Re-fetch: the magnet may have been deconstructed while the meteor was falling.
+                inv = InventoriesHandler.Instance.GetInventoryById(c.magnet.wo.GetLinkedInventoryId());
             }
+
+            int stored = 0, dropped = 0;
             foreach (var g in c.loot)
             {
-                InventoriesHandler.Instance.AddItemToInventory(g, inv, (success, id) =>
+                var toStorage = inv != null
+                    && (c.magnet.filter.Count == 0 || c.magnet.filter.Contains(g.GetId()))
+                    && !inv.IsFull();
+                if (!toStorage)
                 {
-                    if (!success && id != 0)
+                    DropOnPile(g, c.pile);
+                    dropped++;
+                    continue;
+                }
+                stored++;
+                var group = g;
+                var pile = c.pile;
+                InventoriesHandler.Instance.AddItemToInventory(group, inv, (success, id) =>
+                {
+                    if (!success)
                     {
-                        WorldObjectsHandler.Instance.DestroyWorldObject(id);
+                        // Storage full: do not lose the item, put it on the pile instead.
+                        if (id != 0)
+                        {
+                            WorldObjectsHandler.Instance.DestroyWorldObject(id);
+                        }
+                        DropOnPile(group, pile);
                     }
                 });
             }
 
             if (Plugin.ShowNotification && c.loot.Count != 0)
             {
-                Notify(c.loot);
+                Notify(c.loot[0], stored, dropped);
             }
         }
 
-        static void Notify(List<Group> loot)
+        static void DropOnPile(Group g, Vector3 pile)
+        {
+            var jitter = UnityEngine.Random.insideUnitCircle * 0.5f;
+            WorldObjectsHandler.Instance.CreateAndDropOnFloor(g, pile + new Vector3(jitter.x, 0f, jitter.y));
+        }
+
+        static void Notify(Group icon, int stored, int dropped)
         {
             try
             {
@@ -394,8 +427,17 @@ namespace MeteorMagnet
                 {
                     return;
                 }
-                var text = Localization.GetLocalizedString("MeteorMagnet_Captured") + ": +" + loot.Count;
-                displayer.AddInformation(3f, text, DataConfig.UiInformationsType.InInventory, loot[0].GetImage());
+                var text = Localization.GetLocalizedString("MeteorMagnet_Captured") + ":";
+                if (stored != 0)
+                {
+                    text += " +" + stored + " " + Localization.GetLocalizedString("MeteorMagnet_Stored");
+                }
+                if (dropped != 0)
+                {
+                    text += (stored != 0 ? "," : "") + " +" + dropped + " " + Localization.GetLocalizedString("MeteorMagnet_Dropped");
+                }
+                var type = stored != 0 ? DataConfig.UiInformationsType.InInventory : DataConfig.UiInformationsType.DropOnFloor;
+                displayer.AddInformation(3f, text, type, icon.GetImage());
             }
             catch (Exception ex)
             {

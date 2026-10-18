@@ -10,8 +10,10 @@ namespace MeteorMagnet
     {
         internal string id;
         internal int level;
-        internal string baseGroupId;
-        internal string fallbackBaseGroupId;
+        /// <summary>Buildings to clone, first existing one wins.</summary>
+        internal string[] baseGroupIds;
+        /// <summary>Mk1 only redirects meteors and drops the loot next to itself; higher tiers store it.</summary>
+        internal bool hasStorage;
         /// <summary>Capture radius in meters; PositiveInfinity = whole planet.</summary>
         internal float radius;
         internal string recipe;
@@ -35,7 +37,7 @@ namespace MeteorMagnet
     }
 
     /// <summary>
-    /// A module crafted from resources that exist on a single planet. Put it into a magnet's
+    /// A module crafted from resources that exist on a single planet. Put it into a Mk2/Mk3 magnet's
     /// storage to give that magnet an extra ability. Each kind counts once per magnet.
     /// </summary>
     internal class Resonator
@@ -62,41 +64,44 @@ namespace MeteorMagnet
             new MagnetTier
             {
                 id = "MeteorMagnet1", level = 1,
-                baseGroupId = "Container1", fallbackBaseGroupId = "Container2",
+                baseGroupIds = ["Beacon", "Container1"],
+                hasStorage = false,
                 radius = 150f,
                 recipe = "Iron,Iron,Iron,Titanium,Titanium,Magnesium,Magnesium,Silicon",
                 unlockTi = 0f,
                 color = new Color(0.35f, 0.55f, 1f),
                 nameRu = "Гравитационный захват Mk1",
                 nameEn = "Meteor Magnet Mk1",
-                descRu = "Притягивает метеориты в радиусе 150 м и складывает их ресурсы в своё хранилище. Положите внутрь резонатор, чтобы получить дополнительный эффект.",
-                descEn = "Pulls in meteors within 150 m and stores their resources. Put a resonator inside for an extra effect.",
+                descRu = "Перенаправляет метеориты в радиусе 150 м к себе. Ресурсы ссыпаются аккуратной кучкой рядом с устройством.",
+                descEn = "Redirects meteors within 150 m towards itself. Their resources drop in a neat pile next to it.",
             },
             new MagnetTier
             {
                 id = "MeteorMagnet2", level = 2,
-                baseGroupId = "Container2", fallbackBaseGroupId = "Container1",
+                baseGroupIds = ["Container1", "Container2"],
+                hasStorage = true,
                 radius = 500f,
                 recipe = "Alloy,Alloy,Aluminium,Aluminium,Cobalt,Cobalt,Titanium,Titanium",
                 unlockTi = 1000000f,
                 color = new Color(0.55f, 0.25f, 1f),
                 nameRu = "Гравитационный захват Mk2",
                 nameEn = "Meteor Magnet Mk2",
-                descRu = "Притягивает метеориты в радиусе 500 м и складывает их ресурсы в своё хранилище. Положите внутрь резонатор, чтобы получить дополнительный эффект.",
-                descEn = "Pulls in meteors within 500 m and stores their resources. Put a resonator inside for an extra effect.",
+                descRu = "Притягивает метеориты в радиусе 500 м и складывает их ресурсы в хранилище размером с малый сундук. Наведитесь и нажмите клавишу фильтра, чтобы выбрать ресурсы. Резонатор внутри даёт дополнительный эффект.",
+                descEn = "Pulls in meteors within 500 m and stores their resources (small chest storage). Aim at it and press the filter key to choose resources. A resonator inside gives an extra effect.",
             },
             new MagnetTier
             {
                 id = "MeteorMagnet3", level = 3,
-                baseGroupId = "Container3", fallbackBaseGroupId = "Container2",
+                baseGroupIds = ["Container2", "Container1"],
+                hasStorage = true,
                 radius = float.PositiveInfinity,
                 recipe = "Alloy,Alloy,Alloy,Alloy,Rod-uranium,Rod-uranium,Iridium,Iridium,Zeolite,Zeolite",
                 unlockTi = 100000000f,
                 color = new Color(1f, 0.3f, 0.75f),
                 nameRu = "Гравитационный захват Mk3",
                 nameEn = "Meteor Magnet Mk3",
-                descRu = "Притягивает все метеориты на планете и складывает их ресурсы в своё хранилище. Положите внутрь резонатор, чтобы получить дополнительный эффект.",
-                descEn = "Pulls in every meteor on the planet and stores their resources. Put a resonator inside for an extra effect.",
+                descRu = "Притягивает все метеориты на планете и складывает их ресурсы в хранилище размером с большой сундук. Наведитесь и нажмите клавишу фильтра, чтобы выбрать ресурсы. Резонатор внутри даёт дополнительный эффект.",
+                descEn = "Pulls in every meteor on the planet and stores their resources (big chest storage). Aim at it and press the filter key to choose resources. A resonator inside gives an extra effect.",
             },
         ];
 
@@ -110,8 +115,8 @@ namespace MeteorMagnet
                 color = new Color(0.3f, 0.8f, 1f),
                 nameRu = "Пульсарный резонатор",
                 nameEn = "Pulsar Resonator",
-                descRu = "Модуль для гравитационного захвата. Захват ловит и пустые метеориты, превращая их в обычную руду.",
-                descEn = "Meteor Magnet module. The magnet also captures barren meteors and turns them into common ore.",
+                descRu = "Модуль для гравитационного захвата Mk2/Mk3. Захват ловит и пустые метеориты, превращая их в обычную руду.",
+                descEn = "Meteor Magnet Mk2/Mk3 module. The magnet also captures barren meteors and turns them into common ore.",
             },
             new Resonator
             {
@@ -121,8 +126,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.6f, 0.2f),
                 nameRu = "Доломитовый концентратор",
                 nameEn = "Dolomite Concentrator",
-                descRu = "Модуль для гравитационного захвата. +50% ресурсов с каждого метеорита.",
-                descEn = "Meteor Magnet module. +50% resources from every meteor.",
+                descRu = "Модуль для гравитационного захвата Mk2/Mk3. +50% ресурсов с каждого метеорита.",
+                descEn = "Meteor Magnet Mk2/Mk3 module. +50% resources from every meteor.",
             },
             new Resonator
             {
@@ -132,8 +137,8 @@ namespace MeteorMagnet
                 color = new Color(0.3f, 1f, 0.6f),
                 nameRu = "Селеновая линза",
                 nameEn = "Selenium Lens",
-                descRu = "Модуль для гравитационного захвата. Удваивает радиус захвата.",
-                descEn = "Meteor Magnet module. Doubles the capture radius.",
+                descRu = "Модуль для гравитационного захвата Mk2/Mk3. Удваивает радиус захвата.",
+                descEn = "Meteor Magnet Mk2/Mk3 module. Doubles the capture radius.",
             },
             new Resonator
             {
@@ -143,8 +148,8 @@ namespace MeteorMagnet
                 color = new Color(0.7f, 1f, 0.1f),
                 nameRu = "Токсичный катализатор",
                 nameEn = "Toxic Catalyst",
-                descRu = "Модуль для гравитационного захвата. Каждый пойманный ресурс с шансом 25% удваивается.",
-                descEn = "Meteor Magnet module. Every captured resource has a 25% chance to be doubled.",
+                descRu = "Модуль для гравитационного захвата Mk2/Mk3. Каждый пойманный ресурс с шансом 25% удваивается.",
+                descEn = "Meteor Magnet Mk2/Mk3 module. Every captured resource has a 25% chance to be doubled.",
             },
         ];
 

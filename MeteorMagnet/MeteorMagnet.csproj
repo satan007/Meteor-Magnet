@@ -41,6 +41,10 @@
       <HintPath>$(GameManaged)Unity.Netcode.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="Unity.InputSystem">
+      <HintPath>$(GameManaged)Unity.InputSystem.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="Unity.Mathematics">
       <HintPath>$(GameManaged)Unity.Mathematics.dll</HintPath>
       <Private>False</Private>

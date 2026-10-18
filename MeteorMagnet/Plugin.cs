@@ -36,6 +36,7 @@ namespace MeteorMagnet
         static ConfigEntry<bool> shakeOnImpact;
         static ConfigEntry<bool> showNotification;
         static ConfigEntry<bool> debugLog;
+        static ConfigEntry<string> filterKey;
 
         static readonly Dictionary<string, ConfigEntry<string>> recipes = [];
         static readonly Dictionary<string, ConfigEntry<float>> tierUnlocks = [];
@@ -55,6 +56,7 @@ namespace MeteorMagnet
             lootMultiplier = Config.Bind("Capture", "LootMultiplier", 1f, "Множитель количества ресурсов с одного метеорита.");
             minLootPerMeteor = Config.Bind("Capture", "MinLootPerMeteor", 1, "Минимум ресурсов с одного метеорита (если у метеорита вообще есть ресурсы).");
             showNotification = Config.Bind("Capture", "ShowNotification", true, "Показывать сообщение при захвате метеорита.");
+            filterKey = Config.Bind("Capture", "FilterKey", "<Keyboard>/n", "Клавиша окна фильтра: наведитесь на захват Mk2/Mk3 и нажмите.");
 
             pullMeteors = Config.Bind("Visual", "PullMeteors", true, "Визуально притягивать метеорит к устройству (он упадёт рядом с ним). Если выключить, метеорит упадёт где падал, но пустым.");
             pullTurnRate = Config.Bind("Visual", "PullTurnRate", 90f, "Скорость поворота метеорита к устройству, градусов в секунду.");
@@ -82,6 +84,7 @@ namespace MeteorMagnet
             DontDestroyOnLoad(go);
             go.hideFlags = HideFlags.HideAndDontSave;
             go.AddComponent<MagnetController>();
+            go.AddComponent<FilterWindow>();
 
             Logger.LogInfo("Meteor Magnet loaded.");
         }
@@ -95,6 +98,7 @@ namespace MeteorMagnet
         internal static bool LeaveAsteroidBody => leaveAsteroidBody.Value;
         internal static bool ShakeOnImpact => shakeOnImpact.Value;
         internal static bool ShowNotification => showNotification.Value;
+        internal static string FilterKey => filterKey.Value.Contains("<") ? filterKey.Value : "<Keyboard>/" + filterKey.Value;
 
         internal static bool HasCrashed(Asteroid a) => fAsteroidHasCrashed != null && fAsteroidHasCrashed(a);
 
@@ -134,8 +138,15 @@ namespace MeteorMagnet
                 {
                     continue;
                 }
-                var baseGroup = ___groupsData.Find(g => g != null && g.id == tier.baseGroupId) as GroupDataConstructible
-                    ?? ___groupsData.Find(g => g != null && g.id == tier.fallbackBaseGroupId) as GroupDataConstructible;
+                GroupDataConstructible baseGroup = null;
+                foreach (var baseId in tier.baseGroupIds)
+                {
+                    baseGroup = ___groupsData.Find(g => g != null && g.id == baseId) as GroupDataConstructible;
+                    if (baseGroup != null)
+                    {
+                        break;
+                    }
+                }
                 if (baseGroup == null)
                 {
                     logger.LogError("No base building for " + tier.id + ", it will not be available.");
@@ -252,6 +263,15 @@ namespace MeteorMagnet
                     dict["GROUP_DESC_" + r.id] = ru ? r.descRu : r.descEn;
                 }
                 dict["MeteorMagnet_Captured"] = ru ? "Метеорит захвачен" : "Meteor captured";
+                dict["MeteorMagnet_Stored"] = ru ? "в хранилище" : "stored";
+                dict["MeteorMagnet_Dropped"] = ru ? "рядом с устройством" : "dropped nearby";
+                dict["MeteorMagnet_FilterTitle"] = ru ? "Фильтр гравитационного захвата" : "Meteor Magnet filter";
+                dict["MeteorMagnet_FilterHint"] = ru
+                    ? "Отмеченные ресурсы идут в хранилище, остальные падают рядом. Ничего не отмечено — в хранилище идёт всё."
+                    : "Checked resources go to storage, the rest drop nearby. Nothing checked = everything goes to storage.";
+                dict["MeteorMagnet_FilterAll"] = ru ? "Всё в хранилище" : "Store everything";
+                dict["MeteorMagnet_FilterClose"] = ru ? "Закрыть" : "Close";
+                dict["MeteorMagnet_FilterEmpty"] = ru ? "На этой планете метеориты с ресурсами не найдены." : "No resource meteors found on this planet.";
             }
         }
     }
