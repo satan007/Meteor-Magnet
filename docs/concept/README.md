@@ -8,3 +8,5 @@
 | `scanner-grok.jpg` | Метеорный сканер Mk1–Mk3 | Grok |
 | `relay-grok.jpg` | Реле сканера: цепочка реле по местности | Grok |
 | `relay-chatgpt.png` | Реле сканера: виды, детали кольца и опор, цепочка до базы | ChatGPT |
+| `magnet-chatgpt.png` | Гравитационный захват Mk1–Mk3, с видами и сценой притягивания метеорита | ChatGPT |
+| `magnet-grok.jpg` | Гравитационный захват Mk1–Mk3 | Grok |
