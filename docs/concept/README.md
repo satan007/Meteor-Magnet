@@ -15,3 +15,4 @@
 | `rocket-grok.jpg` | Спутниковая ракета на стартовой площадке | Grok |
 | `modules-crystals-chatgpt.png` | Модули: кристаллы в корпусе, с подписями и материалами | ChatGPT |
 | `modules-cartridges-chatgpt.png` | Модули: технические картриджи с капсулой ресурса | ChatGPT |
+| `network-chatgpt.png` | Вся сеть: сканер → цепочка реле → захват, метеорит затягивается в захват | ChatGPT |
