@@ -13,3 +13,5 @@
 | `rocket-chatgpt-sheet.png` | Спутниковая ракета: на площадке, разрез с отсеком спутника, спутник на орбите | ChatGPT |
 | `rocket-chatgpt-pad.png` | Спутниковая ракета на стартовой площадке | ChatGPT |
 | `rocket-grok.jpg` | Спутниковая ракета на стартовой площадке | Grok |
+| `modules-crystals-chatgpt.png` | Модули: кристаллы в корпусе, с подписями и материалами | ChatGPT |
+| `modules-cartridges-chatgpt.png` | Модули: технические картриджи с капсулой ресурса | ChatGPT |
