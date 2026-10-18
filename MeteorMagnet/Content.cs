@@ -35,6 +35,8 @@ namespace MeteorMagnet
         internal int captureSlots;
         /// <summary>Chance that a capture fails.</summary>
         internal float failChance;
+        /// <summary>Separate slots for modules, opened with the module key.</summary>
+        internal int moduleSlots;
 
         internal override string ConfigSection => "Magnet Mk" + level;
     }
@@ -59,6 +61,8 @@ namespace MeteorMagnet
         internal float lockTime;
         /// <summary>Whether meteors with rare resources are detected at all.</summary>
         internal bool seesRare;
+        /// <summary>Separate slots for modules, opened with the module key.</summary>
+        internal int moduleSlots;
 
         internal override string ConfigSection => "Scanner Mk" + level;
     }
@@ -165,13 +169,14 @@ namespace MeteorMagnet
                 hasStorage = false,
                 captureSlots = 1,
                 failChance = 0.20f,
+                moduleSlots = 1,
                 recipe = "Iron,Iron,Iron,Titanium,Titanium,Titanium,Magnesium,Magnesium,Silicon,Silicon",
                 unlockTi = 0f,
                 color = new Color(0.35f, 0.55f, 1f),
                 nameRu = "Гравитационный захват Mk1",
                 nameEn = "Meteor Magnet Mk1",
-                descRu = "Притягивает метеориты, которые ему передаёт сканер (ставить в зоне связи сканера или реле). Держит 1 метеорит за раз. Ресурсы ссыпаются кучкой рядом.",
-                descEn = "Pulls in meteors handed over by a scanner (place it in the link area of a scanner or relay). Holds 1 meteor at a time. Resources drop in a pile next to it.",
+                descRu = "Притягивает метеориты, которые ему передаёт сканер (ставить в зоне связи сканера или реле). Держит 1 метеорит за раз. Ресурсы ссыпаются кучкой рядом. 1 ячейка под модуль (клавиша K).",
+                descEn = "Pulls in meteors handed over by a scanner (place it in the link area of a scanner or relay). Holds 1 meteor at a time. Resources drop in a pile next to it. 1 module slot (K key).",
             },
             new MagnetTier
             {
@@ -180,13 +185,14 @@ namespace MeteorMagnet
                 hasStorage = true,
                 captureSlots = 2,
                 failChance = 0.12f,
+                moduleSlots = 3,
                 recipe = "Alloy,Alloy,Alloy,Aluminium,Aluminium,Cobalt,Cobalt,Titanium,Titanium,Iridium",
                 unlockTi = 1000000f,
                 color = new Color(0.55f, 0.25f, 1f),
                 nameRu = "Гравитационный захват Mk2",
                 nameEn = "Meteor Magnet Mk2",
-                descRu = "Притягивает метеориты, которые ему передаёт сканер, по 2 за раз. Хранилище размером с малый сундук, фильтр по клавише. Модули захвата кладутся внутрь.",
-                descEn = "Pulls in meteors handed over by a scanner, 2 at a time. Small chest storage, filter on a key. Magnet modules go inside.",
+                descRu = "Притягивает метеориты, которые ему передаёт сканер, по 2 за раз. Хранилище размером с малый сундук, фильтр по клавише. Модули захвата ставятся в отдельные ячейки (клавиша K).",
+                descEn = "Pulls in meteors handed over by a scanner, 2 at a time. Small chest storage, filter on a key. Magnet modules go into separate slots (K key).",
             },
             new MagnetTier
             {
@@ -195,13 +201,14 @@ namespace MeteorMagnet
                 hasStorage = true,
                 captureSlots = 3,
                 failChance = 0.08f,
+                moduleSlots = 5,
                 recipe = "Alloy,Alloy,Alloy,Alloy,Rod-uranium,Rod-uranium,Iridium,Iridium,Osmium,Osmium,Zeolite",
                 unlockTi = 100000000f,
                 color = new Color(1f, 0.3f, 0.75f),
                 nameRu = "Гравитационный захват Mk3",
                 nameEn = "Meteor Magnet Mk3",
-                descRu = "Притягивает метеориты, которые ему передаёт сканер, по 3 за раз. Хранилище размером с большой сундук, фильтр по клавише. Модули захвата кладутся внутрь.",
-                descEn = "Pulls in meteors handed over by a scanner, 3 at a time. Big chest storage, filter on a key. Magnet modules go inside.",
+                descRu = "Притягивает метеориты, которые ему передаёт сканер, по 3 за раз. Хранилище размером с большой сундук, фильтр по клавише. Модули захвата ставятся в отдельные ячейки (клавиша K).",
+                descEn = "Pulls in meteors handed over by a scanner, 3 at a time. Big chest storage, filter on a key. Magnet modules go into separate slots (K key).",
             },
         ];
 
@@ -210,7 +217,8 @@ namespace MeteorMagnet
             new ScannerTier
             {
                 id = "MeteorScanner1", level = 1,
-                baseGroupIds = ["Container1"],
+                baseGroupIds = ["Beacon", "Container1"],
+                moduleSlots = 2,
                 scanRadius = 300f,
                 linkRadius = 60f,
                 trackSlots = 2,
@@ -221,13 +229,14 @@ namespace MeteorMagnet
                 color = new Color(0.3f, 1f, 0.9f),
                 nameRu = "Метеорный сканер Mk1",
                 nameEn = "Meteor Scanner Mk1",
-                descRu = "Замечает метеориты в радиусе 300 м, ведёт 2 цели и передаёт их захватам в радиусе связи 60 м. Редкие метеориты не видит. Модули сканера кладутся внутрь.",
-                descEn = "Detects meteors within 300 m, tracks 2 targets and hands them to magnets within a 60 m link radius. Does not see rare meteors. Scanner modules go inside.",
+                descRu = "Замечает метеориты в радиусе 300 м, ведёт 2 цели и передаёт их захватам в радиусе связи 60 м. Редкие метеориты не видит. Модули сканера ставятся в отдельные ячейки (клавиша K).",
+                descEn = "Detects meteors within 300 m, tracks 2 targets and hands them to magnets within a 60 m link radius. Does not see rare meteors. Scanner modules go into separate slots (K key).",
             },
             new ScannerTier
             {
                 id = "MeteorScanner2", level = 2,
-                baseGroupIds = ["Container1"],
+                baseGroupIds = ["Beacon", "Container1"],
+                moduleSlots = 3,
                 scanRadius = 800f,
                 linkRadius = 100f,
                 trackSlots = 4,
@@ -238,13 +247,14 @@ namespace MeteorMagnet
                 color = new Color(0.3f, 0.85f, 1f),
                 nameRu = "Метеорный сканер Mk2",
                 nameEn = "Meteor Scanner Mk2",
-                descRu = "Замечает метеориты в радиусе 800 м, ведёт 4 цели и передаёт их захватам в радиусе связи 100 м. Модули сканера кладутся внутрь.",
-                descEn = "Detects meteors within 800 m, tracks 4 targets and hands them to magnets within a 100 m link radius. Scanner modules go inside.",
+                descRu = "Замечает метеориты в радиусе 800 м, ведёт 4 цели и передаёт их захватам в радиусе связи 100 м. Модули сканера ставятся в отдельные ячейки (клавиша K).",
+                descEn = "Detects meteors within 800 m, tracks 4 targets and hands them to magnets within a 100 m link radius. Scanner modules go into separate slots (K key).",
             },
             new ScannerTier
             {
                 id = "MeteorScanner3", level = 3,
-                baseGroupIds = ["Container1"],
+                baseGroupIds = ["Beacon", "Container1"],
+                moduleSlots = 4,
                 scanRadius = 2000f,
                 usesSatellite = true,
                 linkRadius = 150f,
@@ -256,8 +266,8 @@ namespace MeteorMagnet
                 color = new Color(0.6f, 0.95f, 1f),
                 nameRu = "Метеорный сканер Mk3",
                 nameEn = "Meteor Scanner Mk3",
-                descRu = "Замечает метеориты в радиусе 2000 м, ведёт 6 целей и передаёт их захватам в радиусе связи 150 м. С модулем космической связи и спутником на орбите видит всю планету. Модули сканера кладутся внутрь.",
-                descEn = "Detects meteors within 2000 m, tracks 6 targets and hands them to magnets within a 150 m link radius. With a Space Link module and a satellite in orbit it sees the whole planet. Scanner modules go inside.",
+                descRu = "Замечает метеориты в радиусе 2000 м, ведёт 6 целей и передаёт их захватам в радиусе связи 150 м. С модулем космической связи и спутником на орбите видит всю планету. Модули сканера ставятся в отдельные ячейки (клавиша K).",
+                descEn = "Detects meteors within 2000 m, tracks 6 targets and hands them to magnets within a 150 m link radius. With a Space Link module and a satellite in orbit it sees the whole planet. Scanner modules go into separate slots (K key).",
             },
         ];
 

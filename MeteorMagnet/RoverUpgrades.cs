@@ -68,6 +68,15 @@ namespace MeteorMagnet
 
         static readonly string[] vehicleMarkers = ["vehicle", "rover", "truck"];
 
+        /// <summary>All item ids currently recognized as rover upgrades.</summary>
+        internal static IEnumerable<string> AllIds()
+        {
+            var ids = new HashSet<string>(byKeyword.Keys);
+            ids.UnionWith(byName.Keys);
+            ids.UnionWith(byConfig.Keys);
+            return ids;
+        }
+
         internal static bool TryGet(string id, out RoverUpgradeType type, out int tier)
         {
             if (id != null

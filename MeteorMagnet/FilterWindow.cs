@@ -18,6 +18,8 @@ namespace MeteorMagnet
 
         InputAction openAction;
         string boundKey;
+        InputAction moduleAction;
+        string boundModuleKey;
 
         WorldObject magnet;
         readonly List<Group> candidates = [];
@@ -32,6 +34,14 @@ namespace MeteorMagnet
                 boundKey = Plugin.FilterKey;
                 openAction = new InputAction("Meteor Magnet Filter", binding: boundKey);
                 openAction.Enable();
+            }
+
+            if (boundModuleKey != Plugin.ModuleKey)
+            {
+                moduleAction?.Disable();
+                boundModuleKey = Plugin.ModuleKey;
+                moduleAction = new InputAction("Meteor Magnet Modules", binding: boundModuleKey);
+                moduleAction.Enable();
             }
 
             var wh = Managers.GetManager<WindowsHandler>();
@@ -55,7 +65,16 @@ namespace MeteorMagnet
                 return;
             }
 
-            if (!Plugin.Enabled || wh.GetHasUiOpen() || !openAction.WasPressedThisFrame())
+            if (!Plugin.Enabled || wh.GetHasUiOpen())
+            {
+                return;
+            }
+            if (moduleAction.WasPressedThisFrame())
+            {
+                OpenModules(wh);
+                return;
+            }
+            if (!openAction.WasPressedThisFrame())
             {
                 return;
             }
@@ -66,7 +85,57 @@ namespace MeteorMagnet
             }
         }
 
+        /// <summary>
+        /// Opens the module slots of the aimed scanner or magnet in the game's own container window.
+        /// </summary>
+        static void OpenModules(WindowsHandler wh)
+        {
+            var wo = FindAimedBuilding();
+            if (wo == null)
+            {
+                Plugin.Log("Module key: not aiming at a scanner or magnet.");
+                return;
+            }
+            var gid = wo.GetGroup()?.GetId();
+            var slots = Content.TierOf(gid)?.moduleSlots ?? Content.ScannerOf(gid)?.moduleSlots ?? 0;
+            var inv = ModuleSlots.Get(wo, slots);
+            if (inv == null)
+            {
+                Plugin.Log("Module key: slots of #" + wo.GetId() + " are not ready yet.");
+                Managers.GetManager<DisplayersHandler>()?.GetInformationsDisplayer()
+                    ?.AddInformation(2f, Localization.GetLocalizedString("MeteorMagnet_ModulesNotReady"), DataConfig.UiInformationsType.OutInventory, null);
+                return;
+            }
+            var backpack = Managers.GetManager<PlayersManager>()?.GetActivePlayerController()?.GetPlayerBackpack()?.GetInventory();
+            if (backpack == null)
+            {
+                return;
+            }
+            var window = (UiWindowContainer)wh.OpenAndReturnUi(DataConfig.UiType.Container);
+            if (window != null)
+            {
+                window.SetInventories(backpack, inv, false);
+                window.SetSettingsData(null, 0, DataConfig.UiSettingType.Null);
+                Plugin.Log("Opened module slots of " + gid + " #" + wo.GetId() + " (inventory " + inv.GetId() + ")");
+            }
+        }
+
+        static WorldObject FindAimedBuilding()
+        {
+            var wo = AimedWorldObject();
+            var gid = wo?.GetGroup()?.GetId();
+            return Content.TierOf(gid) != null || Content.ScannerOf(gid) != null ? wo : null;
+        }
+
         static WorldObject FindAimedMagnet()
+        {
+            var wo = AimedWorldObject();
+            var tier = Content.TierOf(wo?.GetGroup()?.GetId());
+            return tier != null && tier.hasStorage ? wo : null;
+        }
+
+        /// <summary>The first world object under the crosshair within reach.</summary>
+        static WorldObject AimedWorldObject()
         {
             var pc = Managers.GetManager<PlayersManager>()?.GetActivePlayerController();
             var ray = pc?.GetAimController()?.GetAimRay();
@@ -80,12 +149,10 @@ namespace MeteorMagnet
             {
                 var woa = hit.transform.GetComponentInParent<WorldObjectAssociated>();
                 var wo = woa?.GetWorldObject();
-                if (wo == null)
+                if (wo != null)
                 {
-                    continue;
+                    return wo;
                 }
-                var tier = Content.TierOf(wo.GetGroup()?.GetId());
-                return tier != null && tier.hasStorage ? wo : null;
             }
             return null;
         }

@@ -37,6 +37,7 @@ namespace MeteorMagnet
         static ConfigEntry<bool> showNotification;
         static ConfigEntry<bool> debugLog;
         static ConfigEntry<string> filterKey;
+        static ConfigEntry<string> moduleKey;
         static ConfigEntry<string> roverUpgradeItems;
         static ConfigEntry<string> baseRocketId;
 
@@ -59,6 +60,7 @@ namespace MeteorMagnet
             minLootPerMeteor = Config.Bind("Capture", "MinLootPerMeteor", 1, "Минимум ресурсов с одного метеорита (если у метеорита вообще есть ресурсы).");
             showNotification = Config.Bind("Capture", "ShowNotification", true, "Показывать сообщение при захвате метеорита.");
             filterKey = Config.Bind("Capture", "FilterKey", "<Keyboard>/n", "Клавиша окна фильтра: наведитесь на захват Mk2/Mk3 и нажмите.");
+            moduleKey = Config.Bind("Capture", "ModuleKey", "<Keyboard>/k", "Клавиша ячеек модулей: наведитесь на сканер или захват и нажмите.");
 
             pullMeteors = Config.Bind("Visual", "PullMeteors", true, "Визуально притягивать метеорит к устройству (он упадёт рядом с ним). Если выключить, метеорит упадёт где падал, но пустым.");
             pullTurnRate = Config.Bind("Visual", "PullTurnRate", 90f, "Скорость поворота метеорита к устройству, градусов в секунду.");
@@ -111,6 +113,7 @@ namespace MeteorMagnet
         internal static bool ShakeOnImpact => shakeOnImpact.Value;
         internal static bool ShowNotification => showNotification.Value;
         internal static string FilterKey => filterKey.Value.Contains("<") ? filterKey.Value : "<Keyboard>/" + filterKey.Value;
+        internal static string ModuleKey => moduleKey.Value.Contains("<") ? moduleKey.Value : "<Keyboard>/" + moduleKey.Value;
 
         internal static bool HasCrashed(Asteroid a) => fAsteroidHasCrashed != null && fAsteroidHasCrashed(a);
 
@@ -367,6 +370,7 @@ namespace MeteorMagnet
                 dict["MeteorMagnet_Slipped"] = ru ? "Захват сорвался, метеорит падает как обычно" : "Capture slipped, the meteor falls as usual";
                 dict["MeteorMagnet_Deflected"] = ru ? "Сбой поля! Метеорит отброшен в сторону" : "Field failure! The meteor was thrown away";
                 dict["MeteorMagnet_Dropped"] = ru ? "рядом с устройством" : "dropped nearby";
+                dict["MeteorMagnet_ModulesNotReady"] = ru ? "Ячейки модулей создаются, попробуйте ещё раз" : "Module slots are being created, try again";
                 dict["MeteorMagnet_NoScanner"] = ru ? "Гравитационный захват не в зоне связи сканера или реле — он не будет работать" : "Meteor Magnet is outside any scanner or relay link area - it will not work";
                 dict["MeteorMagnet_FilterTitle"] = ru ? "Фильтр гравитационного захвата" : "Meteor Magnet filter";
                 dict["MeteorMagnet_FilterHint"] = ru

@@ -31,13 +31,16 @@ namespace MeteorMagnet
 
             internal int Upgrade(RoverUpgradeType t) => upgrades.TryGetValue(t, out var v) ? v : 0;
 
+            /// <summary>The building's separate module slots (see <see cref="ModuleSlots"/>).</summary>
+            internal Inventory moduleInventory;
+
             internal void ReadModules()
             {
-                if (inventory == null)
+                if (moduleInventory == null)
                 {
                     return;
                 }
-                foreach (var item in inventory.GetInsideWorldObjects())
+                foreach (var item in moduleInventory.GetInsideWorldObjects())
                 {
                     var itemId = item?.GetGroup()?.GetId();
                     var res = Content.ResonatorOf(itemId);
@@ -127,6 +130,8 @@ namespace MeteorMagnet
         readonly List<Asteroid> done = [];
 
         float nextScan;
+        float nextOrphanCheck;
+        WorldObjectsHandler lastWorld;
         float nextVortex;
         // Items already being moved by the vortex, so they are not added twice.
         readonly HashSet<int> vortexPending = [];
@@ -141,6 +146,22 @@ namespace MeteorMagnet
             if (NetworkManager.Singleton != null && !NetworkManager.Singleton.IsServer)
             {
                 return;
+            }
+
+            if (WorldObjectsHandler.Instance != lastWorld)
+            {
+                // Another world was loaded: nothing from the previous one applies.
+                lastWorld = WorldObjectsHandler.Instance;
+                ModuleSlots.Reset();
+                loggedModules.Clear();
+                captures.Clear();
+                tracks.Clear();
+                seen.Clear();
+            }
+            if (Time.time >= nextOrphanCheck)
+            {
+                nextOrphanCheck = Time.time + 5f;
+                ModuleSlots.DropOrphans();
             }
 
             if (Time.time >= nextScan)
@@ -257,9 +278,10 @@ namespace MeteorMagnet
                         wo = wo,
                         tier = scannerTier,
                         position = wo.GetPosition(),
-                        inventory = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId()),
+                        moduleInventory = ModuleSlots.Get(wo, scannerTier.moduleSlots),
                     };
                     scanner.ReadModules();
+                    LogModules(scanner);
                     scanner.planetWide = scannerTier.usesSatellite
                         && scanner.effects.Contains(ResonatorEffect.SpaceLink)
                         && Satellite.IsLaunched(planetHash != 0 ? planetHash : wo.GetPlanetHash());
@@ -282,7 +304,9 @@ namespace MeteorMagnet
                             magnet.filter.Add(g.GetId());
                         }
                     }
+                    magnet.moduleInventory = ModuleSlots.Get(wo, tier.moduleSlots);
                     magnet.ReadModules();
+                    LogModules(magnet);
                     if (magnet.inventory != null)
                     {
                         ApplyStorageSize(magnet);
@@ -358,6 +382,31 @@ namespace MeteorMagnet
                 }
             }
             return false;
+        }
+
+        // What each building's modules were last time, so changes are logged once.
+        readonly Dictionary<int, string> loggedModules = [];
+
+        void LogModules(Building b)
+        {
+            var parts = new List<string>();
+            foreach (var e in b.effects)
+            {
+                parts.Add(e.ToString());
+            }
+            foreach (var kv in b.upgrades)
+            {
+                parts.Add(kv.Key + " T" + kv.Value);
+            }
+            parts.Sort(StringComparer.Ordinal);
+            var text = (b.moduleInventory == null ? "slots not ready; " : "slots " + b.moduleInventory.GetInsideWorldObjects().Count
+                + "/" + b.moduleInventory.GetSize() + "; ") + (parts.Count == 0 ? "no modules" : string.Join(", ", parts));
+            var id = b.wo.GetId();
+            if (!loggedModules.TryGetValue(id, out var last) || last != text)
+            {
+                loggedModules[id] = text;
+                Plugin.Log(b.wo.GetGroup().GetId() + " #" + id + ": " + text);
+            }
         }
 
         void RememberBaseSize(WorldObject wo, string gid)
@@ -528,7 +577,9 @@ namespace MeteorMagnet
                     capture.delivered = true;
                 }
                 captures[asteroid] = capture;
-                Plugin.Log("Captured meteor with " + loot.Count + " resources for " + magnet.tier.id + " #" + magnet.wo.GetId());
+                Plugin.Log("Captured meteor with " + loot.Count + " resources for " + magnet.tier.id + " #" + magnet.wo.GetId()
+                    + ": meteor at " + asteroid.transform.position + ", would land " + landing + ", pulled to " + capture.target
+                    + " (magnet at " + magnet.position + ")");
             }
 
             // Forget tracks of meteors that are gone.
@@ -878,6 +929,8 @@ namespace MeteorMagnet
                 {
                     t.rotation = Quaternion.LookRotation((c.target + Vector3.down * Content.DiveDepth - pos).normalized);
                     c.released = true;
+                    Plugin.Log("Meteor dives in: " + dist.ToString("0") + " m from target " + c.target + ", speed " + speed.ToString("0") + " m/s"
+                        + (c.deflected ? " (thrown away)" : ""));
                 }
                 else
                 {
@@ -908,11 +961,14 @@ namespace MeteorMagnet
             foreach (var kv in captures)
             {
                 var asteroid = kv.Key;
-                var landed = asteroid == null
-                    || Plugin.HasCrashed(asteroid)
-                    || Time.time - kv.Value.capturedAt > CaptureTimeout;
-                if (landed)
+                var gone = asteroid == null;
+                var crashed = !gone && Plugin.HasCrashed(asteroid);
+                var timedOut = !gone && !crashed && Time.time - kv.Value.capturedAt > CaptureTimeout;
+                if (gone || crashed || timedOut)
                 {
+                    Plugin.Log("Captured meteor " + (crashed ? "crashed" : gone ? "disappeared" : "timed out (never hit the ground)")
+                        + " after " + (Time.time - kv.Value.capturedAt).ToString("0.0") + " s"
+                        + (gone ? "" : " at " + asteroid.transform.position) + (kv.Value.deflected ? ", thrown away" : ""));
                     done.Add(asteroid);
                     if (!kv.Value.delivered)
                     {
@@ -973,6 +1029,8 @@ namespace MeteorMagnet
                 MarkPile(c.pile, c.magnet.Upgrade(RoverUpgradeType.Lights));
             }
 
+            Plugin.Log("Delivered " + c.loot.Count + " items from magnet #" + c.magnet.wo.GetId() + ": " + stored + " stored/forwarded, "
+                + dropped + " dropped at " + c.pile);
             if (Plugin.ShowNotification && c.loot.Count != 0)
             {
                 Notify(c.loot[0], stored, dropped);
