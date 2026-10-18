@@ -12,7 +12,7 @@ namespace MeteorMagnet
     /// in and, once it lands, puts its resources into storage (Mk2/Mk3, respecting the filter) or drops
     /// them in a pile next to it (Mk1, filtered out, storage full).
     /// </summary>
-    internal class MagnetController : MonoBehaviour
+    internal partial class MagnetController : MonoBehaviour
     {
         const float ScanInterval = 0.25f;
 
@@ -521,6 +521,7 @@ namespace MeteorMagnet
                     Decorate(wo, tier.color, tier.level, magnet.LightTier);
                 }
             }
+            UpdateSummaries();
         }
 
         /// <summary>
@@ -907,14 +908,19 @@ namespace MeteorMagnet
                 var loot = barren ? RollBarrenLoot(asteroid, magnet) : RollLoot(asteroid, magnet);
                 var coreRoll = UnityEngine.Random.value;
                 var core = GroupsHandler.GetGroupViaId(Content.Core.id);
+                // No cap: every full 100% is a sure core, the rest is the chance of one more.
                 var coreChance = CoreChance(magnet, scanner);
-                if (core != null && loot.Count != 0 && coreRoll < coreChance)
+                var cores = Mathf.FloorToInt(coreChance) + (coreRoll < coreChance - Mathf.Floor(coreChance) ? 1 : 0);
+                if (core != null && loot.Count != 0 && cores > 0)
                 {
-                    loot.Add(core);
+                    for (int i = 0; i < cores; i++)
+                    {
+                        loot.Add(core);
+                    }
                     NotifyText("MeteorMagnet_CoreFound", DataConfig.UiInformationsType.InInventory);
                 }
                 Plugin.Log("Meteor core roll " + (coreRoll * 100f).ToString("0.0") + " vs " + (coreChance * 100f).ToString("0.0")
-                    + "% -> " + (core == null ? "core item missing" : coreRoll < coreChance ? "CORE FOUND" : "no core"));
+                    + "% -> " + (core == null ? "core item missing" : cores > 0 ? cores + " CORE(S) FOUND" : "no core"));
                 if (loot.Count == 0)
                 {
                     magnet.busy--;
@@ -1462,7 +1468,7 @@ namespace MeteorMagnet
         /// <summary>Meteor core chance: base, deconstruction chip, and the equipment bonus of the magnet and the scanner that found the meteor.</summary>
         static float CoreChance(Magnet m, Scanner s = null)
         {
-            return Mathf.Clamp01(Plugin.CoreDropChance + PlayerGear.DeconstructCorePerTier * m.Gear(GearType.DeconstructChip)
+            return Mathf.Max(0f, Plugin.CoreDropChance + PlayerGear.DeconstructCorePerTier * m.Gear(GearType.DeconstructChip)
                 + GearBonus(m) + GearBonus(s));
         }
 

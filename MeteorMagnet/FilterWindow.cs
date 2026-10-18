@@ -23,6 +23,8 @@ namespace MeteorMagnet
 
         WorldObject magnet;
         bool isScanner;
+        // Building whose module slots are open (0 = none): its summary is shown next to the window.
+        static int modulesOf;
         readonly List<Group> candidates = [];
         readonly HashSet<string> selected = [];
         Vector2 scroll;
@@ -49,7 +51,12 @@ namespace MeteorMagnet
             if (wh == null)
             {
                 magnet = null;
+                modulesOf = 0;
                 return;
+            }
+            if (modulesOf != 0 && !wh.GetHasUiOpen())
+            {
+                modulesOf = 0;
             }
 
             if (magnet != null)
@@ -117,6 +124,7 @@ namespace MeteorMagnet
             {
                 window.SetInventories(backpack, inv, false);
                 window.SetSettingsData(null, 0, DataConfig.UiSettingType.Null);
+                modulesOf = wo.GetId();
                 Plugin.Log("Opened module slots of " + gid + " #" + wo.GetId() + " (inventory " + inv.GetId() + ")");
             }
         }
@@ -224,6 +232,10 @@ namespace MeteorMagnet
 
         void OnGUI()
         {
+            if (modulesOf != 0)
+            {
+                DrawSummary();
+            }
             if (magnet == null)
             {
                 return;
@@ -298,6 +310,50 @@ namespace MeteorMagnet
             GUILayout.EndHorizontal();
 
             GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// Totals of the building's modules, to the right of the module window; refreshed with the network (about every second).
+        /// </summary>
+        static void DrawSummary()
+        {
+            if (!MagnetController.Summaries.TryGetValue(modulesOf, out var summary))
+            {
+                return;
+            }
+            var scale = Screen.height / 1080f;
+            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+            var text = new GUIStyle(GUI.skin.label) { fontSize = 17, wordWrap = true };
+            var title = new GUIStyle(GUI.skin.label) { fontSize = 22, fontStyle = FontStyle.Bold, wordWrap = true };
+            var cheer = new GUIStyle(text) { fontStyle = FontStyle.Bold, fontSize = 19 };
+            cheer.normal.textColor = new Color(1f, 0.82f, 0.25f);
+
+            const float w = 400f;
+            var x = Screen.width / scale - w - 24f;
+            var height = 56f;
+            foreach (var line in summary.lines)
+            {
+                height += text.CalcHeight(new GUIContent(line), w - 28f) + 2f;
+            }
+            foreach (var line in summary.cheers)
+            {
+                height += cheer.CalcHeight(new GUIContent(line), w - 28f) + 4f;
+            }
+            var rect = new Rect(x, 140f, w, height);
+            GUI.Box(rect, GUIContent.none);
+            GUI.Box(rect, GUIContent.none);
+            GUILayout.BeginArea(new Rect(rect.x + 14, rect.y + 10, w - 28, height - 16));
+            GUILayout.Label(summary.title, title);
+            foreach (var line in summary.cheers)
+            {
+                GUILayout.Label("» " + line, cheer);
+            }
+            foreach (var line in summary.lines)
+            {
+                GUILayout.Label(line, text);
+            }
+            GUILayout.EndArea();
+            GUI.matrix = Matrix4x4.identity;
         }
 
         static void DrawIcon(Group g)
