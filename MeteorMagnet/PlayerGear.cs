@@ -58,8 +58,22 @@ namespace MeteorMagnet
         static readonly string[] hints = ["backpack", "oxygen", "jetpack", "boots", "equipment", "exoskeleton", "multitool", "hud", "compass", "filter", "map"];
 
         static readonly Dictionary<string, (GearType type, int tier)> byId = [];
+        // Wearable items without an effect of their own (filters, map, skins...): they still count for the simulation bonus.
+        static readonly HashSet<string> other = [];
 
-        internal static IEnumerable<string> AllIds() => byId.Keys;
+        internal static IEnumerable<string> AllIds()
+        {
+            foreach (var id in byId.Keys)
+            {
+                yield return id;
+            }
+            foreach (var id in other)
+            {
+                yield return id;
+            }
+        }
+
+        internal static bool IsOtherEquipment(string id) => id != null && other.Contains(id);
 
         internal static bool TryGet(string id, out GearType type, out int tier)
         {
@@ -78,7 +92,10 @@ namespace MeteorMagnet
         internal static void Detect(List<GroupData> groupsData, string explicitList)
         {
             byId.Clear();
+            other.Clear();
             var unmatched = new List<string>();
+            // The game marks wearable items with an equipable type; read by name so a rename only falls back to id hints.
+            var fEquipable = HarmonyLib.AccessTools.Field(typeof(GroupDataItem), "equipableType");
             foreach (var gd in groupsData)
             {
                 if (gd is not GroupDataItem || gd.id == null || gd.id.StartsWith("Vehicle", StringComparison.Ordinal)
@@ -98,10 +115,17 @@ namespace MeteorMagnet
                         break;
                     }
                 }
-                var lower = gd.id.ToLowerInvariant();
-                if (!matched && Array.Exists(hints, h => lower.Contains(h)))
+                if (matched)
                 {
-                    unmatched.Add(gd.id);
+                    continue;
+                }
+                var equipable = fEquipable?.GetValue(gd)?.ToString();
+                var lower = gd.id.ToLowerInvariant();
+                if (fEquipable != null ? equipable != null && equipable != "Null" && equipable != "None"
+                    : Array.Exists(hints, h => lower.Contains(h)))
+                {
+                    other.Add(gd.id);
+                    unmatched.Add(gd.id + (equipable != null ? " (" + equipable + ")" : ""));
                 }
             }
 
@@ -131,7 +155,9 @@ namespace MeteorMagnet
             found.Sort(StringComparer.Ordinal);
             unmatched.Sort(StringComparer.Ordinal);
             Plugin.LogInfo("Player equipment usable as modules: " + (found.Count == 0 ? "none" : string.Join(", ", found)));
-            Plugin.LogInfo("Equipment-like items not used as modules: " + (unmatched.Count == 0 ? "none" : string.Join(", ", unmatched)));
+            Plugin.LogInfo("Equipment without an effect (counts for the simulation bonus only"
+                + (fEquipable == null ? ", found by id hints: equipableType field missing" : "") + "): "
+                + (unmatched.Count == 0 ? "none" : string.Join(", ", unmatched)));
         }
     }
 }

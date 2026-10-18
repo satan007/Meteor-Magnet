@@ -42,6 +42,12 @@ namespace MeteorMagnet
             /// <summary>A module multiplier at the building's strength: x2 becomes x1.5, x0.5 becomes x0.75.</summary>
             internal float Weaken(float factor) => 1f + (factor - 1f) * Strength;
 
+            /// <summary>
+            /// Every rover upgrade / piece of equipment in the slots, working or not (duplicates, no effect here,
+            /// no effect at all): each adds to the simulation bonus while the matching simulation module is there.
+            /// </summary>
+            internal int roverItems, gearItems;
+
             /// <summary>Highest tier of each kind of player equipment in the module slots.</summary>
             internal readonly Dictionary<GearType, int> gear = [];
 
@@ -97,6 +103,7 @@ namespace MeteorMagnet
                     }
                     if (RoverUpgrades.TryGet(itemId, out var type, out var upTier))
                     {
+                        roverItems++;
                         var used = isScanner ? scannerUpgrades : magnetUpgrades;
                         if (!used.Contains(type))
                         {
@@ -116,6 +123,7 @@ namespace MeteorMagnet
                     }
                     if (PlayerGear.TryGet(itemId, out var gearType, out var gearTier))
                     {
+                        gearItems++;
                         var usedGear = isScanner ? scannerGear : magnetGear;
                         if (!usedGear.Contains(gearType))
                         {
@@ -133,20 +141,28 @@ namespace MeteorMagnet
                         }
                         continue;
                     }
+                    if (PlayerGear.IsOtherEquipment(itemId))
+                    {
+                        gearItems++;
+                        moduleReport.Add(itemId + ": equipment without an effect, counts for the simulation bonus");
+                        continue;
+                    }
                     moduleReport.Add((itemId ?? "?") + ": not a module");
                 }
 
                 // Rover upgrades and player equipment are made for other machines: they work only through
                 // the matching simulation module in the same building.
-                if (upgrades.Count != 0 && !effects.Contains(ResonatorEffect.RoverSimulation))
+                if (roverItems != 0 && !effects.Contains(ResonatorEffect.RoverSimulation))
                 {
-                    moduleReport.Add("rover upgrades INACTIVE (" + string.Join(", ", upgrades.Keys) + "): no Rover Simulation module here");
+                    moduleReport.Add("rover upgrades INACTIVE (" + roverItems + " items): no Rover Simulation module here");
                     upgrades.Clear();
+                    roverItems = 0;
                 }
-                if (gear.Count != 0 && !effects.Contains(ResonatorEffect.GearSimulation))
+                if (gearItems != 0 && !effects.Contains(ResonatorEffect.GearSimulation))
                 {
-                    moduleReport.Add("equipment INACTIVE (" + string.Join(", ", gear.Keys) + "): no Equipment Simulation module here");
+                    moduleReport.Add("equipment INACTIVE (" + gearItems + " items): no Equipment Simulation module here");
                     gear.Clear();
+                    gearItems = 0;
                 }
 
                 // Emergency expansion: tiers are halved, rounded down (a T1 item stops working).
@@ -685,10 +701,10 @@ namespace MeteorMagnet
             }
             lines.Add("  => power draw " + b.Draw.ToString("0.#") + " kW"
                 + (b.effects.Contains(ResonatorEffect.PowerSaver) ? " (power saver x" + b.Weaken(Content.PowerSaverFactor) + ")" : ""));
-            if (b.gear.Count + b.upgrades.Count > 0)
+            if (b.gearItems + b.roverItems > 0)
             {
-                lines.Add("  => simulation bonus: meteor core chance +" + (GearBonus(b) * 100f).ToString("0.##") + " points (" + b.gear.Count
-                    + " equipment), fail chance -" + (RoverBonus(b) * 100f).ToString("0.##") + " points (" + b.upgrades.Count + " rover upgrades)"
+                lines.Add("  => simulation bonus: meteor core chance +" + (GearBonus(b) * 100f).ToString("0.##") + " points (" + b.gearItems
+                    + " equipment items), fail chance -" + (RoverBonus(b) * 100f).ToString("0.##") + " points (" + b.roverItems + " rover upgrades)"
                     + (b is Scanner ? ", for the meteors this scanner hands over" : ""));
             }
             var text = string.Join("\n", lines);
@@ -866,7 +882,7 @@ namespace MeteorMagnet
                     + (rare ? " incl. rare +" + (Content.RareFailBonus * 100f).ToString("0") + "%" : "")
                     + (magnet.effects.Contains(ResonatorEffect.Stabilizer) ? " x" + magnet.Weaken(Content.StabilizerFailFactor).ToString("0.##") + " stabilizer" : "")
                     + (RoverBonus(magnet) + RoverBonus(scanner) > 0f ? " -" + ((RoverBonus(magnet) + RoverBonus(scanner)) * 100f).ToString("0.#")
-                        + " points rover simulation (" + magnet.upgrades.Count + " in magnet, " + scanner.upgrades.Count + " in scanner)" : "")
+                        + " points rover simulation (" + magnet.roverItems + " in magnet, " + scanner.roverItems + " in scanner)" : "")
                     + ", roll " + (failRoll * 100f).ToString("0") + " -> " + (failRoll < failChance ? "FAILED" : "ok"));
                 if (failRoll < failChance)
                 {
@@ -1439,9 +1455,9 @@ namespace MeteorMagnet
         /// the meteor core chance, every working kind of rover upgrade (through the rover simulation) lowers the
         /// fail chance, by 0.5 points each, at the building's strength.
         /// </summary>
-        static float GearBonus(Building b) => b == null ? 0f : b.gear.Count * Content.SimulationBonusPerItem * b.Strength;
+        static float GearBonus(Building b) => b == null ? 0f : b.gearItems * Content.SimulationBonusPerItem * b.Strength;
 
-        static float RoverBonus(Building b) => b == null ? 0f : b.upgrades.Count * Content.SimulationBonusPerItem * b.Strength;
+        static float RoverBonus(Building b) => b == null ? 0f : b.roverItems * Content.SimulationBonusPerItem * b.Strength;
 
         /// <summary>Meteor core chance: base, deconstruction chip, and the equipment bonus of the magnet and the scanner that found the meteor.</summary>
         static float CoreChance(Magnet m, Scanner s = null)
