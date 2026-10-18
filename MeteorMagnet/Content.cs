@@ -155,6 +155,11 @@ namespace MeteorMagnet
         /// <summary>Config section for the recipe; planet resonators by default.</summary>
         internal string ConfigSection => planet != null ? "Resonator " + planet : "Module " + effect;
         internal string recipe;
+        /// <summary>
+        /// Earlier default recipes. A config still holding one of them is moved to the current default,
+        /// since BepInEx keeps the value written by an older version.
+        /// </summary>
+        internal string[] previousRecipes = [];
         internal Color color;
         internal string nameRu, nameEn, descRu, descEn;
     }
@@ -377,8 +382,8 @@ namespace MeteorMagnet
             dropChance = 0.03f,
             nameRu = "Ядро метеорита",
             nameEn = "Meteor Core",
-            descRu = "Плотное ядро, которое иногда остаётся от пойманного метеорита (3%). Нужно для продвинутых модулей и метеорного маяка. Всегда попадает в хранилище захвата, мимо фильтра.",
-            descEn = "A dense core sometimes left by a captured meteor (3%). Needed for advanced modules and the meteor beacon. Always goes to the magnet's storage, past the filter.",
+            descRu = "Плотное ядро, которое иногда остаётся от пойманного метеорита (3%). Нужно для всех модулей и метеорного маяка. Всегда попадает в хранилище захвата, мимо фильтра.",
+            descEn = "A dense core sometimes left by a captured meteor (3%). Needed for every module and the meteor beacon. Always goes to the magnet's storage, past the filter.",
         };
 
         internal static IEnumerable<BuildingDef> Buildings
@@ -405,7 +410,8 @@ namespace MeteorMagnet
             {
                 id = "MeteorResonatorPrime", planet = "Prime", forScanner = true,
                 effect = ResonatorEffect.CaptureBarren,
-                recipe = "PulsarQuartz,PulsarQuartz,Alloy",
+                recipe = "MeteorCore,PulsarQuartz,PulsarQuartz,Alloy",
+                previousRecipes = ["PulsarQuartz,PulsarQuartz,Alloy"],
                 color = new Color(0.3f, 0.8f, 1f),
                 nameRu = "Пульсарный резонатор",
                 nameEn = "Pulsar Resonator",
@@ -416,7 +422,8 @@ namespace MeteorMagnet
             {
                 id = "MeteorResonatorHumble", planet = "Humble",
                 effect = ResonatorEffect.LootBonus,
-                recipe = "Dolomite,Dolomite,Bauxite,Bauxite,Uraninite",
+                recipe = "MeteorCore,Dolomite,Dolomite,Bauxite,Bauxite,Uraninite",
+                previousRecipes = ["Dolomite,Dolomite,Bauxite,Bauxite,Uraninite"],
                 color = new Color(1f, 0.6f, 0.2f),
                 nameRu = "Доломитовый концентратор",
                 nameEn = "Dolomite Concentrator",
@@ -427,7 +434,8 @@ namespace MeteorMagnet
             {
                 id = "MeteorResonatorSelenea", planet = "Selenea", forScanner = true,
                 effect = ResonatorEffect.RadiusBoost,
-                recipe = "Selenium,Selenium,BalzarQuartz",
+                recipe = "MeteorCore,Selenium,Selenium,BalzarQuartz",
+                previousRecipes = ["Selenium,Selenium,BalzarQuartz"],
                 color = new Color(0.3f, 1f, 0.6f),
                 nameRu = "Селеновая линза",
                 nameEn = "Selenium Lens",
@@ -438,7 +446,8 @@ namespace MeteorMagnet
             {
                 id = "MeteorResonatorToxicity", planet = "Toxicity",
                 effect = ResonatorEffect.DuplicateChance,
-                recipe = "ToxicGoo,ToxicGoo,ToxicGoo,Alloy",
+                recipe = "MeteorCore,ToxicGoo,ToxicGoo,ToxicGoo,Alloy",
+                previousRecipes = ["ToxicGoo,ToxicGoo,ToxicGoo,Alloy"],
                 color = new Color(0.7f, 1f, 0.1f),
                 nameRu = "Токсичный катализатор",
                 nameEn = "Toxic Catalyst",
@@ -449,7 +458,8 @@ namespace MeteorMagnet
             {
                 id = "MeteorResonatorAqualis", planet = "Aqualis",
                 effect = ResonatorEffect.Vortex,
-                recipe = "Phosphorus,Phosphorus,Phosphorus,Alloy",
+                recipe = "MeteorCore,Phosphorus,Phosphorus,Phosphorus,Alloy",
+                previousRecipes = ["Phosphorus,Phosphorus,Phosphorus,Alloy"],
                 color = new Color(0.2f, 0.5f, 1f),
                 nameRu = "Фосфорный водоворот",
                 nameEn = "Phosphorus Vortex",
@@ -460,7 +470,8 @@ namespace MeteorMagnet
             {
                 id = "MeteorResonatorSkeo", planet = "Skeo",
                 effect = ResonatorEffect.EveryResourceType,
-                recipe = "Amber,Amber,Amber,Alloy",
+                recipe = "MeteorCore,Amber,Amber,Amber,Alloy",
+                previousRecipes = ["Amber,Amber,Amber,Alloy"],
                 color = new Color(1f, 0.75f, 0f),
                 nameRu = "Янтарный сепаратор",
                 nameEn = "Amber Separator",
@@ -472,7 +483,8 @@ namespace MeteorMagnet
                 id = "MeteorSpaceLink", planet = null, forScanner = true,
                 craftStation = DataConfig.CraftableIn.CraftStationT3,
                 effect = ResonatorEffect.SpaceLink,
-                recipe = "Alloy,Alloy,Osmium,Iridium,Iridium,Silicon,Silicon",
+                recipe = "MeteorCore,MeteorCore,Alloy,Alloy,Osmium,Iridium,Iridium,Silicon,Silicon",
+                previousRecipes = ["Alloy,Alloy,Osmium,Iridium,Iridium,Silicon,Silicon"],
                 color = new Color(0.75f, 0.6f, 1f),
                 nameRu = "Модуль космической связи",
                 nameEn = "Space Link Module",
@@ -483,7 +495,8 @@ namespace MeteorMagnet
             {
                 id = "MeteorFieldStabilizer", planet = null, forScanner = false,
                 effect = ResonatorEffect.Stabilizer,
-                recipe = "Alloy,Alloy,Iridium,Iridium,Aluminium,Aluminium,Rod-uranium",
+                recipe = "MeteorCore,Alloy,Alloy,Iridium,Iridium,Aluminium,Aluminium,Rod-uranium",
+                previousRecipes = ["Alloy,Alloy,Iridium,Iridium,Aluminium,Aluminium,Rod-uranium"],
                 color = new Color(0.4f, 0.9f, 1f),
                 nameRu = "Стабилизатор поля",
                 nameEn = "Field Stabilizer",

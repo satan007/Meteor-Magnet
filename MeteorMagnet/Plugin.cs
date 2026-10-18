@@ -108,7 +108,13 @@ namespace MeteorMagnet
 
             foreach (var res in Content.Resonators)
             {
-                recipes[res.id] = Config.Bind(res.ConfigSection, "Recipe", res.recipe, "Рецепт модуля: id предметов через запятую. Неизвестные id пропускаются.");
+                var entry = Config.Bind(res.ConfigSection, "Recipe", res.recipe, "Рецепт модуля: id предметов через запятую. Неизвестные id пропускаются.");
+                if (Array.IndexOf(res.previousRecipes, entry.Value) >= 0)
+                {
+                    Logger.LogInfo(res.id + ": recipe updated from the old default '" + entry.Value + "' to '" + res.recipe + "'");
+                    entry.Value = res.recipe;
+                }
+                recipes[res.id] = entry;
             }
 
             var rocket = Content.SatelliteRocket;
