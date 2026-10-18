@@ -97,7 +97,9 @@ namespace MeteorMagnet
                     continue;
                 }
                 var lower = gd.id.ToLowerInvariant();
-                if (!Array.Exists(vehicleMarkers, m => lower.Contains(m)) || !TryKeyword(lower, out var type))
+                // Blueprint chips that unlock an upgrade are not the upgrade itself.
+                if (lower.Contains("blueprint")
+                    || !Array.Exists(vehicleMarkers, m => lower.Contains(m)) || !TryKeyword(lower, out var type))
                 {
                     continue;
                 }
@@ -134,7 +136,8 @@ namespace MeteorMagnet
             const string prefix = "GROUP_NAME_";
             foreach (var kv in english)
             {
-                if (!kv.Key.StartsWith(prefix, StringComparison.Ordinal) || kv.Value == null)
+                if (!kv.Key.StartsWith(prefix, StringComparison.Ordinal) || kv.Value == null
+                    || kv.Key.IndexOf("blueprint", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     continue;
                 }
@@ -171,6 +174,9 @@ namespace MeteorMagnet
             return false;
         }
 
+        // What was logged last, so the list is printed once, not on every localization reload.
+        static string lastLogged;
+
         static void LogFound()
         {
             var all = new Dictionary<string, (RoverUpgradeType type, int tier)>(byKeyword);
@@ -182,15 +188,24 @@ namespace MeteorMagnet
             {
                 all[kv.Key] = kv.Value;
             }
+            var lines = new List<string>();
+            foreach (var kv in all)
+            {
+                lines.Add(kv.Key + " -> " + kv.Value.type + " T" + kv.Value.tier);
+            }
+            lines.Sort(StringComparer.Ordinal);
+            var text = string.Join(", ", lines);
+            if (text == lastLogged)
+            {
+                return;
+            }
+            lastLogged = text;
             if (all.Count == 0)
             {
                 Plugin.LogWarning("No rover upgrades detected yet. If none show up later, set [RoverUpgrades] Items in the config.");
                 return;
             }
-            foreach (var kv in all)
-            {
-                Plugin.LogInfo("Rover upgrade usable in magnets: " + kv.Key + " -> " + kv.Value.type + " T" + kv.Value.tier);
-            }
+            Plugin.LogInfo("Rover upgrades usable in magnets: " + text);
         }
 
         static int TierFrom(string id)
