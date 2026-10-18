@@ -182,6 +182,8 @@ dotnet build -c Release -p:GameDir="C:\Program Files (x86)\Steam\steamapps\commo
 | Visual | LeaveAsteroidBody | false | Оставлять тело метеорита/кратер |
 | Visual | ShakeOnImpact | false | Тряска камеры при падении |
 | Visual | ShowSignalLines | true | Линии сигнала сканер → реле → захват |
+| Visual | SignalLineWidth | 0.03 | Толщина линии сигнала, м (к концам сужается) |
+| Visual | SignalLineOpacity | 0.4 | Непрозрачность линии: 0 — невидима, 1 — сплошная |
 | Scanner Mk1..3, Magnet Mk1..3, Relay, Satellite Rocket | Recipe / UnlockAtTerraformation | см. таблицы построек | Рецепт и порог открытия |
 | Module SpaceLink | Recipe | см. «Спутник» | Рецепт модуля космической связи |
 | Satellite Rocket | BaseRocket | пусто | Id игровой ракеты, которую копирует спутниковая (пусто = найти автоматически) |

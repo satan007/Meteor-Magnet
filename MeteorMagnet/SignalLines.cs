@@ -10,7 +10,9 @@ namespace MeteorMagnet
     internal class SignalLines
     {
         const int Segments = 20;
-        const float Width = 0.12f;
+        // Thin in the middle of the span, a bit thinner at the ends, like a beam rather than a cable.
+        static readonly AnimationCurve taper = new(
+            new Keyframe(0f, 0.5f), new Keyframe(0.15f, 1f), new Keyframe(0.85f, 1f), new Keyframe(1f, 0.5f));
         const float Lift = 3f;
 
         static readonly string[] shaderNames =
@@ -50,8 +52,8 @@ namespace MeteorMagnet
                 lr.material = material;
                 lr.positionCount = Segments + 1;
                 lr.useWorldSpace = true;
-                lr.widthMultiplier = Width;
-                lr.numCapVertices = 2;
+                lr.widthCurve = taper;
+                lr.numCapVertices = 0;
                 lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 lr.receiveShadows = false;
                 lines[key] = lr;
@@ -67,6 +69,10 @@ namespace MeteorMagnet
                 var p = (1 - t) * (1 - t) * a + 2 * (1 - t) * t * control + t * t * b;
                 lr.SetPosition(i, p);
             }
+            lr.widthMultiplier = Plugin.SignalLineWidth;
+            var alpha = Plugin.SignalLineOpacity;
+            fromColor.a *= alpha;
+            toColor.a *= alpha;
             lr.startColor = fromColor;
             lr.endColor = toColor;
         }
