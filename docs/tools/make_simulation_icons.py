@@ -62,3 +62,22 @@ def split(g, cx, cy, c):
 
 
 cartridge(split, (255, 80, 70, 255), 0.0).save(f"{out}/MeteorEmergencyExpansion.png")
+
+
+def waves(g, cx, cy, c):
+    """Beacon frequency: a mast sending faster and faster waves."""
+    g.line((cx, cy + 30, cx, cy - 6), fill=c, width=4)
+    for r in (8, 15, 22):
+        g.arc((cx - r, cy - 10 - r, cx + r, cy - 10 + r), 200, 340, fill=c, width=3)
+
+
+def dial(g, cx, cy, c):
+    """Beacon tuning: a tuning dial with a needle and a locked range."""
+    g.ellipse((cx - 20, cy - 20, cx + 20, cy + 20), outline=c, width=3)
+    g.arc((cx - 14, cy - 14, cx + 14, cy + 14), 200, 290, fill=c, width=4)
+    g.line((cx, cy, cx - 9, cy - 12), fill=c, width=3)
+    g.rectangle((cx - 10, cy + 26, cx + 10, cy + 34), fill=c)
+
+
+cartridge(waves, (255, 160, 60, 255), 0.08).save(f"{out}/MeteorBeaconFrequency.png")
+cartridge(dial, (230, 205, 150, 255), 0.11, 0.5).save(f"{out}/MeteorBeaconCommon.png")

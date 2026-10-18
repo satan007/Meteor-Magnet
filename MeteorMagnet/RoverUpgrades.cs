@@ -15,7 +15,7 @@ namespace MeteorMagnet
         Lights,
         /// <summary>Scanner: wider link area (scanner and its relays).</summary>
         Beacon,
-        /// <summary>No effect yet.</summary>
+        /// <summary>Autonomy: the building works without base power and draws none.</summary>
         Oxygen,
         /// <summary>Loot arrives right at capture instead of after the impact.</summary>
         Jetpack,

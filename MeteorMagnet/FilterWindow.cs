@@ -105,7 +105,8 @@ namespace MeteorMagnet
                 return;
             }
             var gid = wo.GetGroup()?.GetId();
-            var slots = Content.TierOf(gid)?.moduleSlots ?? Content.ScannerOf(gid)?.moduleSlots ?? 0;
+            var slots = Content.TierOf(gid)?.moduleSlots ?? Content.ScannerOf(gid)?.moduleSlots
+                ?? (gid == Content.Beacon.id ? Content.Beacon.moduleSlots : 0);
             var inv = ModuleSlots.Get(wo, slots);
             if (inv == null)
             {
@@ -133,7 +134,7 @@ namespace MeteorMagnet
         {
             var wo = AimedWorldObject();
             var gid = wo?.GetGroup()?.GetId();
-            return Content.TierOf(gid) != null || Content.ScannerOf(gid) != null ? wo : null;
+            return Content.TierOf(gid) != null || Content.ScannerOf(gid) != null || gid == Content.Beacon.id ? wo : null;
         }
 
         /// <summary>A Mk2/Mk3 magnet or any scanner under the crosshair.</summary>

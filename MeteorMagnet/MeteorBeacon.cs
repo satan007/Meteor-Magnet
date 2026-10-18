@@ -39,7 +39,7 @@ namespace MeteorMagnet
         /// <summary>
         /// Queues a random resource shower of this planet. Returns false (with the reason) if it cannot right now.
         /// </summary>
-        internal static bool TrySummon(out string result)
+        internal static bool TrySummon(bool commonOnly, out string result)
         {
             var mh = Managers.GetManager<MeteoHandler>();
             if (mh == null)
@@ -56,14 +56,15 @@ namespace MeteorMagnet
             foreach (var me in fMeteoEvents(mh) ?? [])
             {
                 var groups = me?.asteroidEventData?.asteroidGameObject?.GetComponent<Asteroid>()?.groupsSelected;
-                if (groups != null && groups.Count != 0)
+                if (groups != null && groups.Count != 0
+                    && (!commonOnly || !groups.Exists(g => g != null && Content.RareResources.Contains(g.id))))
                 {
                     showers.Add(me);
                 }
             }
             if (showers.Count == 0)
             {
-                result = "this planet has no meteor showers with resources";
+                result = "this planet has no meteor showers with " + (commonOnly ? "common " : "") + "resources";
                 return false;
             }
             var pick = showers[UnityEngine.Random.Range(0, showers.Count)];

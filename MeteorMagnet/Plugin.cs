@@ -44,6 +44,7 @@ namespace MeteorMagnet
         static ConfigEntry<float> beaconInterval;
         static ConfigEntry<float> coreDropChance;
         static ConfigEntry<string> coreBaseItem;
+        static ConfigEntry<int> coreTradeValue;
         static ConfigEntry<float> markerSeconds;
         static ConfigEntry<bool> routeByFilter;
         static ConfigEntry<bool> showNotification;
@@ -100,6 +101,7 @@ namespace MeteorMagnet
             }
             beaconInterval = Config.Bind(Content.Beacon.ConfigSection, "IntervalMinutes", Content.Beacon.intervalMinutes, "Как часто маяк вызывает метеоритный дождь, минут.");
             coreDropChance = Config.Bind("Meteor Core", "DropChance", Content.Core.dropChance, "Шанс, что пойманный метеорит оставит ядро (0.03 = 3%).");
+            coreTradeValue = Config.Bind("Meteor Core", "TradeValue", -1, "Цена ядра в терратокенах для торговых ракет. -1 = в 20 раз дороже предмета, чью модель берёт ядро (иридий). 0 = не продаётся.");
             coreBaseItem = Config.Bind("Meteor Core", "BaseItem", "", "Id предмета игры, модель которого берёт ядро. Пусто = иридий (если нет — осмий, урановый стержень).");
             displayBaseScreen = Config.Bind("Display", "BaseScreen", "",
                 "Id игрового экрана, который копирует дисплей. Пусто = выбрать автоматически. Найденные экраны пишутся в лог.");
@@ -364,8 +366,11 @@ namespace MeteorMagnet
             SetupClone(item, core.id, groupsData);
             item.unlockingValue = 0f;
             item.craftableInList = [];
+            // Sold by trade rockets like any resource: a sink for the cores players do not need.
+            item.tradeValue = coreTradeValue.Value >= 0 ? coreTradeValue.Value : baseItem.tradeValue * 20;
             groupsData.Add(item);
-            Log("Registered " + core.id + " (model of " + baseItem.id + ")");
+            LogInfo("Registered " + core.id + " (model of " + baseItem.id + ", trade value " + item.tradeValue
+                + ", base item " + baseItem.tradeValue + ")");
         }
 
         static FieldInfo energyField;

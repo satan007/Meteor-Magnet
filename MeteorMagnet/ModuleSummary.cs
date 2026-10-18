@@ -1,5 +1,6 @@
 using SpaceCraft;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace MeteorMagnet
 {
@@ -38,6 +39,29 @@ namespace MeteorMagnet
             foreach (var m in magnets)
             {
                 Summaries[m.wo.GetId()] = Summarize(m);
+            }
+            foreach (var b in beacons)
+            {
+                var r = new BuildingSummary { title = Readable.GetGroupName(b.GetGroup()) };
+                r.lines.Add(T("Дождь каждые ", "A shower every ") + (BeaconInterval / 60f).ToString("0.#") + T(" мин", " min"));
+                if (!float.IsNaN(nextShower))
+                {
+                    r.lines.Add(T("Следующий через ", "Next in ") + (Mathf.Max(0f, nextShower - Time.time) / 60f).ToString("0.#") + T(" мин", " min"));
+                }
+                r.lines.Add(beaconEffects.Contains(ResonatorEffect.BeaconCommon)
+                    ? T("Только дожди обычных ресурсов", "Only showers of common resources")
+                    : T("Любые дожди с ресурсами этой планеты", "Any resource shower of this planet"));
+                if (beacons.Count > 1)
+                {
+                    r.lines.Add(T("Маяков: ", "Beacons: ") + beacons.Count + T(" (не складываются, модули общие)", " (do not stack, modules are shared)"));
+                }
+                if (beaconModules.TryGetValue(b.GetId(), out var inv) && inv != null)
+                {
+                    r.lines.Add(T("Ячейки модулей: ", "Module slots: ") + inv.GetInsideWorldObjects().Count + "/" + inv.GetSize());
+                }
+                r.lines.Add(T("Энергия: ", "Power: ") + Plugin.EnergyUse(Content.Beacon.id).ToString("0.#") + T(" кВт", " kW")
+                    + (powerOk ? "" : T(" — НЕ ХВАТАЕТ", " - NOT ENOUGH")));
+                Summaries[b.GetId()] = r;
             }
         }
 
@@ -90,9 +114,10 @@ namespace MeteorMagnet
                 + (m.effects.Contains(ResonatorEffect.DuplicateChance) ? T(", удвоение ", ", doubling ") + Pct(Content.DuplicateChance * m.Strength) : "")
                 + (m.effects.Contains(ResonatorEffect.EveryResourceType) ? T(", каждый вид", ", every type") + (m.Weakened ? T(" (½ метеоритов)", " (½ of meteors)") : "") : ""));
             r.lines.Add(T("Шанс ядра метеорита: ", "Meteor core chance: ") + Pct(CoreChance(m)) + T(" (+ бонус сканера)", " (+ scanner bonus)"));
-            if (m.effects.Contains(ResonatorEffect.Vortex))
+            if (m.effects.Contains(ResonatorEffect.Overflow))
             {
-                r.lines.Add(T("Водоворот: ", "Vortex: ") + (Content.VortexRadius * m.Strength).ToString("0") + T(" м", " m"));
+                r.lines.Add(T("Перелив излишков в другие захваты сети", "Overflow to other magnets of the network")
+                    + (m.Weakened ? T(" (каждый второй предмет)", " (every other item)") : ""));
             }
             if (m.inventory != null)
             {
@@ -178,7 +203,9 @@ namespace MeteorMagnet
                         : T("Экипировка не работает: нужен модуль симуляции экипировки", "Equipment inactive: needs the Equipment Simulation module"));
                 }
             }
-            r.lines.Add(T("Энергия: ", "Power: ") + b.Draw.ToString("0.#") + T(" кВт", " kW"));
+            r.lines.Add(T("Энергия: ", "Power: ") + (b.Autonomous
+                ? T("автономно (кислород ровера), от базы не берёт", "autonomous (rover oxygen), draws nothing from the base")
+                : b.Draw.ToString("0.#") + T(" кВт", " kW")));
         }
 
         static string Names(HashSet<string> ids)

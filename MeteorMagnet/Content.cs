@@ -96,6 +96,7 @@ namespace MeteorMagnet
     internal class BeaconDef : BuildingDef
     {
         internal float intervalMinutes;
+        internal int moduleSlots;
 
         internal override string ConfigSection => "Meteor Beacon";
     }
@@ -120,8 +121,8 @@ namespace MeteorMagnet
         RadiusBoost,
         /// <summary>Every captured item has a chance to be duplicated.</summary>
         DuplicateChance,
-        /// <summary>Pulls loose meteor resources lying near the magnet into its storage.</summary>
-        Vortex,
+        /// <summary>What the magnet cannot keep flows to another magnet of the same network.</summary>
+        Overflow,
         /// <summary>Every meteor gives at least one of each resource type it carries.</summary>
         EveryResourceType,
         /// <summary>Scanner Mk3: with a satellite in orbit over the planet, scans the whole planet.</summary>
@@ -140,6 +141,10 @@ namespace MeteorMagnet
         GearSimulation,
         /// <summary>Scanner or magnet: twice the module slots, every other module at half strength.</summary>
         EmergencyExpansion,
+        /// <summary>Meteor beacon: calls showers more often.</summary>
+        BeaconFrequency,
+        /// <summary>Meteor beacon: calls only showers of common resources (rare ones cannot be targeted).</summary>
+        BeaconCommon,
     }
 
     /// <summary>
@@ -154,6 +159,8 @@ namespace MeteorMagnet
         internal bool forScanner;
         /// <summary>Works in scanners and magnets alike.</summary>
         internal bool forBoth;
+        /// <summary>Works only in the meteor beacon.</summary>
+        internal bool forBeacon;
         internal string planet;
         internal ResonatorEffect effect;
         /// <summary>Crafting station: planet resonators on T2, advanced modules on T3.</summary>
@@ -202,8 +209,6 @@ namespace MeteorMagnet
         internal const float DiveDepth = 10f;
         internal const float DuplicateChance = 0.25f;
         internal const float ForwardRadius = 40f;
-        internal const float VortexRadius = 30f;
-        internal const float VortexInterval = 2f;
 
         /// <summary>
         /// Rare meteor resources: such meteors take longer to lock on, fail more often and a Mk1 scanner does not see them.
@@ -223,6 +228,8 @@ namespace MeteorMagnet
         internal const float FasterLockFactor = 0.7f;
         /// <summary>Strength of the other modules next to the emergency expansion; tiers are rounded down.</summary>
         internal const float EmergencyStrength = 0.5f;
+        /// <summary>Shower interval multiplier of a beacon with the frequency module.</summary>
+        internal const float BeaconFrequencyFactor = 0.75f;
         /// <summary>Bonus of each working kind of equipment (core chance) or rover upgrade (lower fail chance), in absolute chance.</summary>
         internal const float SimulationBonusPerItem = 0.005f;
         /// <summary>How long a mark over an uncaught meteor stays, seconds.</summary>
@@ -376,13 +383,14 @@ namespace MeteorMagnet
             id = "MeteorBeacon", energy = 50f, level = 3,
             baseGroupIds = ["Beacon", "Container1"],
             intervalMinutes = 20f,
+            moduleSlots = 2,
             recipe = "MeteorCore,MeteorCore,MeteorCore,Alloy,Alloy,Alloy,Osmium,Osmium,Rod-uranium,Rod-uranium,Iridium,Iridium",
             unlockTi = 100000000f,
             color = new Color(1f, 0.45f, 0.15f),
             nameRu = "Метеорный маяк",
             nameEn = "Meteor Beacon",
-            descRu = "Раз в 20 минут вызывает метеоритный дождь с ресурсами, если на базе хватает энергии. Очень прожорлив: 50 кВт.",
-            descEn = "Draws a meteor shower with resources every 20 minutes while the base has power. Very power hungry: 50 kW.",
+            descRu = "Раз в 20 минут вызывает метеоритный дождь с ресурсами, если на базе хватает энергии. Очень прожорлив: 50 кВт. 2 ячейки под модули маяка (клавиша K).",
+            descEn = "Draws a meteor shower with resources every 20 minutes while the base has power. Very power hungry: 50 kW. 2 slots for beacon modules (K key).",
         };
 
         internal static readonly CoreDef Core = new()
@@ -467,14 +475,14 @@ namespace MeteorMagnet
             new Resonator
             {
                 id = "MeteorResonatorAqualis", planet = "Aqualis",
-                effect = ResonatorEffect.Vortex,
+                effect = ResonatorEffect.Overflow,
                 recipe = "MeteorCore,Phosphorus,Phosphorus,Phosphorus,Alloy",
                 previousRecipes = ["Phosphorus,Phosphorus,Phosphorus,Alloy"],
                 color = new Color(0.2f, 0.5f, 1f),
-                nameRu = "Фосфорный водоворот",
-                nameEn = "Phosphorus Vortex",
-                descRu = "Модуль захвата Mk2/Mk3. Затягивает в хранилище ресурсы метеоритов, лежащие на земле в радиусе 30 м (с учётом фильтра) — например, кучки от Mk1 или старые обломки.",
-                descEn = "Magnet Mk2/Mk3 module. Pulls meteor resources lying on the ground within 30 m into storage (respecting the filter), e.g. Mk1 piles or old debris.",
+                nameRu = "Фосфорный гидроперелив",
+                nameEn = "Phosphorus Overflow",
+                descRu = "Модуль захвата Mk2/Mk3. Что не влезло в хранилище или не прошло фильтр, перетекает в другой захват той же сети: сначала в тот, чей фильтр это хочет, потом в захват без фильтра.",
+                descEn = "Magnet Mk2/Mk3 module. What does not fit or does not pass the filter flows to another magnet of the same network: first one whose filter wants it, then one without a filter.",
             },
             new Resonator
             {
@@ -568,6 +576,28 @@ namespace MeteorMagnet
                 nameEn = "Equipment Simulation Module",
                 descRu = "Модуль сканера или захвата. Эмулирует скафандр: без него экипировка игрока в этой постройке не работает.",
                 descEn = "Scanner or magnet module. Emulates a spacesuit: player equipment in this building works only with it.",
+            },
+            new Resonator
+            {
+                id = "MeteorBeaconFrequency", planet = null, forBeacon = true,
+                effect = ResonatorEffect.BeaconFrequency,
+                recipe = "MeteorCore,Alloy,Alloy,Silicon,Silicon,Cobalt",
+                color = new Color(1f, 0.55f, 0.1f),
+                nameRu = "Модуль частоты маяка",
+                nameEn = "Beacon Frequency Module",
+                descRu = "Модуль метеорного маяка. Маяк вызывает дождь на 25% чаще.",
+                descEn = "Meteor beacon module. The beacon calls showers 25% more often.",
+            },
+            new Resonator
+            {
+                id = "MeteorBeaconCommon", planet = null, forBeacon = true,
+                effect = ResonatorEffect.BeaconCommon,
+                recipe = "MeteorCore,Iron,Iron,Titanium,Titanium,Magnesium",
+                color = new Color(0.8f, 0.7f, 0.5f),
+                nameRu = "Модуль настройки маяка",
+                nameEn = "Beacon Tuning Module",
+                descRu = "Модуль метеорного маяка. Маяк вызывает только дожди обычных ресурсов, без редких (суперсплав, осмий, кварцы). Настроить маяк на редкие нельзя.",
+                descEn = "Meteor beacon module. The beacon calls only showers of common resources, no rare ones (super alloy, osmium, quartzes). It cannot be tuned to rare ones.",
             },
             new Resonator
             {

@@ -30,7 +30,10 @@ namespace MeteorMagnet
             internal readonly Dictionary<RoverUpgradeType, int> upgrades = [];
 
             /// <summary>Power draw of this building, the power saver included.</summary>
-            internal float Draw => Plugin.EnergyUse(wo.GetGroup().GetId())
+            /// <summary>Rover oxygen (through the rover simulation): own life support, works and draws nothing without base power.</summary>
+            internal bool Autonomous => Upgrade(RoverUpgradeType.Oxygen) > 0;
+
+            internal float Draw => Autonomous ? 0f : Plugin.EnergyUse(wo.GetGroup().GetId())
                 * (effects.Contains(ResonatorEffect.PowerSaver) ? Weaken(Content.PowerSaverFactor) : 1f);
 
             /// <summary>Emergency expansion inside: twice the module slots, every other module at half strength.</summary>
@@ -65,12 +68,13 @@ namespace MeteorMagnet
             internal readonly List<string> moduleReport = [];
 
             // Rover upgrades each building type makes use of.
-            static readonly HashSet<RoverUpgradeType> scannerUpgrades = [RoverUpgradeType.Equipment, RoverUpgradeType.Beacon];
+            static readonly HashSet<RoverUpgradeType> scannerUpgrades = [RoverUpgradeType.Equipment, RoverUpgradeType.Beacon, RoverUpgradeType.Oxygen];
             static readonly HashSet<GearType> scannerGear = [GearType.Exoskeleton, GearType.Boots, GearType.OxygenTank, GearType.Compass];
             static readonly HashSet<GearType> magnetGear =
                 [GearType.Exoskeleton, GearType.Backpack, GearType.Jetpack, GearType.MiningChip, GearType.TorchChip, GearType.DeconstructChip];
             static readonly HashSet<RoverUpgradeType> magnetUpgrades =
-                [RoverUpgradeType.Storage, RoverUpgradeType.Speed, RoverUpgradeType.Lights, RoverUpgradeType.Logistics, RoverUpgradeType.Jetpack];
+                [RoverUpgradeType.Storage, RoverUpgradeType.Speed, RoverUpgradeType.Lights, RoverUpgradeType.Logistics, RoverUpgradeType.Jetpack,
+                    RoverUpgradeType.Oxygen];
 
             internal void ReadModules()
             {
@@ -87,7 +91,11 @@ namespace MeteorMagnet
                     if (res != null)
                     {
                         // A module only works in the building it is made for.
-                        if (!res.forBoth && res.forScanner != isScanner)
+                        if (res.forBeacon)
+                        {
+                            moduleReport.Add(itemId + ": IGNORED, works only in the meteor beacon");
+                        }
+                        else if (!res.forBoth && res.forScanner != isScanner)
                         {
                             moduleReport.Add(itemId + ": IGNORED, works only in a " + (res.forScanner ? "scanner" : "magnet"));
                         }
@@ -299,9 +307,6 @@ namespace MeteorMagnet
         float nextScan;
         float nextOrphanCheck;
         WorldObjectsHandler lastWorld;
-        float nextVortex;
-        // Items already being moved by the vortex, so they are not added twice.
-        readonly HashSet<int> vortexPending = [];
 
         void Update()
         {
@@ -356,71 +361,6 @@ namespace MeteorMagnet
             CheckLanded();
             WatchSlipped();
             DrawMeteorLines();
-
-            if (Time.time >= nextVortex)
-            {
-                nextVortex = Time.time + Content.VortexInterval;
-                RunVortex();
-            }
-        }
-
-        /// <summary>
-        /// Phosphorus Vortex: magnets with it pull loose meteor resources lying nearby into their storage.
-        /// Only resources meteors can bring on this planet are touched, so tools and other dropped items stay put.
-        /// </summary>
-        void RunVortex()
-        {
-            List<Magnet> vortexMagnets = null;
-            foreach (var m in magnets)
-            {
-                if (m.inventory != null && m.effects.Contains(ResonatorEffect.Vortex) && !m.inventory.IsFull())
-                {
-                    (vortexMagnets ??= []).Add(m);
-                }
-            }
-            if (vortexMagnets == null)
-            {
-                return;
-            }
-
-            var resourceIds = PlanetMeteors.ResourceIds();
-            foreach (var grabable in FindObjectsByType<ActionGrabable>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
-            {
-                if (grabable == null || !grabable.GetCanGrab())
-                {
-                    continue;
-                }
-                var wo = grabable.GetComponentInParent<WorldObjectAssociated>()?.GetWorldObject();
-                var gid = wo?.GetGroup()?.GetId();
-                if (gid == null || !resourceIds.Contains(gid) || vortexPending.Contains(wo.GetId()))
-                {
-                    continue;
-                }
-                var pos = grabable.transform.position;
-                foreach (var m in vortexMagnets)
-                {
-                    if (Vector3.Distance(pos, m.position) > Content.VortexRadius * m.Strength)
-                    {
-                        continue;
-                    }
-                    if (m.filter.Count != 0 && !m.filter.Contains(gid))
-                    {
-                        continue;
-                    }
-                    if (m.inventory.IsFull())
-                    {
-                        continue;
-                    }
-                    var id = wo.GetId();
-                    vortexPending.Add(id);
-                    InventoriesHandler.Instance.AddWorldObjectToInventory(wo, m.inventory, grabbed: true, success =>
-                    {
-                        vortexPending.Remove(id);
-                        Plugin.Log("Vortex pulled " + gid + " #" + id + ": " + success);
-                    });
-                    break;
-                }
-            }
         }
 
         void RefreshBuildings()
@@ -429,6 +369,8 @@ namespace MeteorMagnet
             scanners.Clear();
             relays.Clear();
             beacons.Clear();
+            beaconEffects.Clear();
+            beaconModules.Clear();
             displayCount = 0;
             var planetHash = CurrentPlanetHash();
             foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
@@ -444,6 +386,7 @@ namespace MeteorMagnet
                         if (gid == Content.Beacon.id)
                         {
                             beacons.Add(wo);
+                            ReadBeaconModules(wo);
                             Decorate(wo, Content.Beacon.color, Content.Beacon.level, 0);
                         }
                         else
@@ -685,9 +628,9 @@ namespace MeteorMagnet
                 {
                     loot.Add("at least one of each resource type" + (m.Weakened ? " (on half of the meteors)" : ""));
                 }
-                if (m.effects.Contains(ResonatorEffect.Vortex))
+                if (m.effects.Contains(ResonatorEffect.Overflow))
                 {
-                    loot.Add("vortex pulls loose resources within " + (Content.VortexRadius * m.Strength).ToString("0") + " m");
+                    loot.Add("overflow to other magnets of the network" + (m.Weakened ? " (half of the items)" : ""));
                 }
                 lines.Add("  => loot: " + (loot.Count == 0 ? "as the meteor carries" : string.Join(", ", loot)));
                 lines.Add("  => pull turn speed x" + (1f + RoverUpgrades.SpeedTurnRatePerTier * m.Upgrade(RoverUpgradeType.Speed))
@@ -763,7 +706,8 @@ namespace MeteorMagnet
             return pl?.GetCurrentPlanetData()?.GetPlanetHash() ?? 0;
         }
 
-        bool powerOk = true;
+        // Whether the base has power for the network; autonomous buildings (rover oxygen) work without it.
+        static bool powerOk = true;
 
         void UpdatePower()
         {
@@ -785,8 +729,20 @@ namespace MeteorMagnet
             }
             if (!powerOk)
             {
-                tracks.Clear();
-                return;
+                // Without power only autonomous scanners keep their targets.
+                var lost = new List<Asteroid>();
+                foreach (var kv in tracks)
+                {
+                    var s = FindScanner(kv.Value.scanner);
+                    if (s == null || !s.Autonomous)
+                    {
+                        lost.Add(kv.Key);
+                    }
+                }
+                foreach (var a in lost)
+                {
+                    tracks.Remove(a);
+                }
             }
             CountLoad();
             var alive = new HashSet<Asteroid>();
@@ -1046,7 +1002,11 @@ namespace MeteorMagnet
             foreach (var s in scanners)
             {
                 string why;
-                if (!PassesFilter(s, asteroid))
+                if (!powerOk && !s.Autonomous)
+                {
+                    why = "no power (and no rover oxygen for autonomy)";
+                }
+                else if (!PassesFilter(s, asteroid))
                 {
                     why = "filtered out (looks for " + string.Join("/", s.filter) + ")";
                 }
@@ -1159,6 +1119,40 @@ namespace MeteorMagnet
         /// Meteor beacons call a shower every IntervalMinutes while the network has power.
         /// The timer starts when the first beacon is built; a busy sky postpones the shower by a minute.
         /// </summary>
+        // Effects of the modules in all beacons (they do not stack: one of a kind is enough) and each beacon's slots.
+        readonly HashSet<ResonatorEffect> beaconEffects = [];
+        readonly Dictionary<int, Inventory> beaconModules = [];
+
+        void ReadBeaconModules(WorldObject wo)
+        {
+            var inv = ModuleSlots.Get(wo, Content.Beacon.moduleSlots);
+            beaconModules[wo.GetId()] = inv;
+            var report = new List<string>();
+            foreach (var item in inv?.GetInsideWorldObjects() ?? [])
+            {
+                var itemId = item?.GetGroup()?.GetId();
+                var res = Content.ResonatorOf(itemId);
+                if (res != null && res.forBeacon)
+                {
+                    beaconEffects.Add(res.effect);
+                    report.Add(itemId + ": active -> " + res.effect);
+                }
+                else
+                {
+                    report.Add((itemId ?? "?") + ": IGNORED, not a beacon module");
+                }
+            }
+            var text = string.Join(", ", report);
+            if (!loggedModules.TryGetValue(wo.GetId(), out var last) || last != text)
+            {
+                loggedModules[wo.GetId()] = text;
+                Plugin.Log("MeteorBeacon #" + wo.GetId() + " modules: " + (text.Length == 0 ? "none" : text));
+            }
+        }
+
+        float BeaconInterval => Plugin.BeaconIntervalSeconds
+            * (beaconEffects.Contains(ResonatorEffect.BeaconFrequency) ? Content.BeaconFrequencyFactor : 1f);
+
         void RunBeacons()
         {
             if (beacons.Count == 0)
@@ -1172,8 +1166,8 @@ namespace MeteorMagnet
             }
             if (float.IsNaN(nextShower))
             {
-                nextShower = Time.time + Plugin.BeaconIntervalSeconds;
-                Plugin.Log(beacons.Count + " meteor beacon(s): next shower in " + (Plugin.BeaconIntervalSeconds / 60f).ToString("0.#") + " min");
+                nextShower = Time.time + BeaconInterval;
+                Plugin.Log(beacons.Count + " meteor beacon(s): next shower in " + (BeaconInterval / 60f).ToString("0.#") + " min");
                 return;
             }
             if (Time.time < nextShower)
@@ -1186,11 +1180,11 @@ namespace MeteorMagnet
                 Plugin.Log("Meteor beacon: no power, shower postponed by a minute");
                 return;
             }
-            if (MeteorBeacon.TrySummon(out var result))
+            if (MeteorBeacon.TrySummon(beaconEffects.Contains(ResonatorEffect.BeaconCommon), out var result))
             {
-                nextShower = Time.time + Plugin.BeaconIntervalSeconds;
+                nextShower = Time.time + BeaconInterval;
                 NotifyText("MeteorMagnet_BeaconShower", DataConfig.UiInformationsType.OutInventory);
-                Plugin.Log("Meteor beacon: " + result + ", next in " + (Plugin.BeaconIntervalSeconds / 60f).ToString("0.#") + " min");
+                Plugin.Log("Meteor beacon: " + result + ", next in " + (BeaconInterval / 60f).ToString("0.#") + " min");
             }
             else
             {
@@ -1310,6 +1304,10 @@ namespace MeteorMagnet
 
         static bool CanSee(Scanner s, Asteroid asteroid, Vector3 landing, bool barren, bool rare)
         {
+            if (!powerOk && !s.Autonomous)
+            {
+                return false;
+            }
             if (!PassesFilter(s, asteroid))
             {
                 return false;
@@ -1374,7 +1372,7 @@ namespace MeteorMagnet
             var bestDist = float.MaxValue;
             foreach (var m in scanner.network)
             {
-                if (m.busy >= m.CaptureSlots)
+                if (m.busy >= m.CaptureSlots || (!powerOk && !m.Autonomous))
                 {
                     continue;
                 }
@@ -1866,7 +1864,7 @@ namespace MeteorMagnet
                 ? FindNearbyContainers(c.magnet)
                 : null;
 
-            int stored = 0, dropped = 0, filteredOut = 0, full = 0;
+            int stored = 0, dropped = 0, filteredOut = 0, full = 0, overflowed = 0;
             if (c.magnet.tier.hasStorage && inv == null)
             {
                 Plugin.Log("Magnet #" + c.magnet.wo.GetId() + " storage inventory not found, everything goes to the pile");
@@ -1899,6 +1897,10 @@ namespace MeteorMagnet
                         }
                     });
                 }
+                else if (TryNetworkOverflow(c, g, forward))
+                {
+                    overflowed++;
+                }
                 else if (Overflow(g, forward, c.pile))
                 {
                     stored++;
@@ -1916,7 +1918,7 @@ namespace MeteorMagnet
 
             MeteorStats.AddResources(c.loot);
             Plugin.Log("Delivered " + c.loot.Count + " items from magnet #" + c.magnet.wo.GetId() + ": " + stored + " stored/forwarded, "
-                + dropped + " dropped at " + c.pile
+                + dropped + " dropped at " + c.pile + (overflowed > 0 ? ", " + overflowed + " overflowed to other magnets (Aqualis)" : "")
                 + (inv != null ? " (storage " + inv.GetInsideWorldObjects().Count + "/" + inv.GetSize() + ", filtered out " + filteredOut
                     + ", storage full " + full + ", filter: " + (c.magnet.filter.Count == 0 ? "none" : string.Join("/", c.magnet.filter)) + ")" : ""));
             if (Plugin.ShowNotification && c.loot.Count != 0)
@@ -1944,6 +1946,56 @@ namespace MeteorMagnet
         /// Puts an item that does not go into the magnet's own storage into a nearby container
         /// (Vehicle - Logistics) or on the pile. Returns true if it went to a container.
         /// </summary>
+        /// <summary>
+        /// Phosphorus overflow (Aqualis): what the magnet cannot keep flows to another magnet of the same network
+        /// whose filter wants it (first) or that stores everything, if it has room. At half strength: every other item.
+        /// </summary>
+        static bool TryNetworkOverflow(Capture c, Group g, List<Inventory> forward)
+        {
+            if (!c.magnet.effects.Contains(ResonatorEffect.Overflow) || c.scanner == null
+                || (c.magnet.Weakened && UnityEngine.Random.value >= c.magnet.Strength))
+            {
+                return false;
+            }
+            Magnet best = null;
+            Inventory bestInv = null;
+            var bestRank = int.MaxValue;
+            foreach (var m in c.scanner.network)
+            {
+                if (m == c.magnet || !m.tier.hasStorage)
+                {
+                    continue;
+                }
+                var rank = m.filter.Count == 0 ? 1 : m.filter.Contains(g.GetId()) ? 0 : -1;
+                if (rank < 0 || rank >= bestRank)
+                {
+                    continue;
+                }
+                var inv = InventoriesHandler.Instance.GetInventoryById(m.wo.GetLinkedInventoryId());
+                if (inv == null || inv.IsFull())
+                {
+                    continue;
+                }
+                best = m;
+                bestInv = inv;
+                bestRank = rank;
+            }
+            if (best == null)
+            {
+                return false;
+            }
+            InventoriesHandler.Instance.AddItemToInventory(g, bestInv, (success, id) =>
+            {
+                if (!success)
+                {
+                    DestroyFailed(id);
+                    Overflow(g, forward, c.pile);
+                }
+            });
+            Plugin.Log("Overflow: " + g.GetId() + " from " + Describe(c.magnet) + " to " + Describe(best) + (bestRank == 0 ? " (its filter wants it)" : " (stores everything)"));
+            return true;
+        }
+
         static bool Overflow(Group g, List<Inventory> forward, Vector3 pile)
         {
             if (forward != null)
