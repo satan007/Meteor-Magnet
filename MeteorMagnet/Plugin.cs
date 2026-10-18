@@ -37,6 +37,7 @@ namespace MeteorMagnet
         static ConfigEntry<bool> showNotification;
         static ConfigEntry<bool> debugLog;
         static ConfigEntry<string> filterKey;
+        static ConfigEntry<string> roverUpgradeItems;
 
         static readonly Dictionary<string, ConfigEntry<string>> recipes = [];
         static readonly Dictionary<string, ConfigEntry<float>> tierUnlocks = [];
@@ -70,6 +71,10 @@ namespace MeteorMagnet
                 recipes[tier.id] = Config.Bind(section, "Recipe", tier.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются.");
                 tierUnlocks[tier.id] = Config.Bind(section, "UnlockAtTerraformation", tier.unlockTi, "Индекс терраформации (Ti), при котором открывается этот тир. 0 = доступно сразу.");
             }
+            roverUpgradeItems = Config.Bind("RoverUpgrades", "Items", "",
+                "Улучшения ровера определяются автоматически по названию. Если какое-то не определилось, впишите его id вручную: "
+                + "Id=Тип:Тир через запятую, типы: Speed, Storage, Lights, Beacon, Oxygen. Пример: VehicleSpeed1=Speed:1,VehicleInventory2=Storage:2");
+
             foreach (var res in Content.Resonators)
             {
                 recipes[res.id] = Config.Bind("Resonator " + res.planet, "Recipe", res.recipe, "Рецепт резонатора: id предметов через запятую. Неизвестные id пропускаются.");
@@ -112,6 +117,8 @@ namespace MeteorMagnet
 
         internal static void LogWarning(string s) => logger.LogWarning(s);
 
+        internal static void LogInfo(string s) => logger.LogInfo(s);
+
         static AccessTools.FieldRef<T, F> TryFieldRef<T, F>(string name)
         {
             if (AccessTools.Field(typeof(T), name) == null)
@@ -130,6 +137,8 @@ namespace MeteorMagnet
         [HarmonyPatch(typeof(StaticDataHandler), "LoadStaticData")]
         static void StaticDataHandler_LoadStaticData(List<GroupData> ___groupsData)
         {
+            RoverUpgrades.Detect(___groupsData, roverUpgradeItems.Value);
+
             var existing = ___groupsData.Where(g => g != null).Select(g => g.id).ToHashSet();
 
             foreach (var tier in Content.Tiers)
@@ -153,6 +162,7 @@ namespace MeteorMagnet
                     continue;
                 }
 
+                tier.resolvedBaseId = baseGroup.id;
                 var magnet = Instantiate(baseGroup);
                 SetupClone(magnet, tier.id, ___groupsData);
                 magnet.unlockingValue = tierUnlocks[tier.id].Value;

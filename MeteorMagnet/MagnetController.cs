@@ -27,6 +27,10 @@ namespace MeteorMagnet
             internal readonly HashSet<ResonatorEffect> effects = [];
             /// <summary>Group ids that go to storage; empty = everything.</summary>
             internal readonly HashSet<string> filter = [];
+            /// <summary>Highest tier of each rover upgrade inside the storage.</summary>
+            internal readonly Dictionary<RoverUpgradeType, int> upgrades = [];
+
+            internal int Upgrade(RoverUpgradeType t) => upgrades.TryGetValue(t, out var v) ? v : 0;
 
             internal float Radius => tier.WholePlanet
                 ? float.PositiveInfinity
@@ -40,13 +44,17 @@ namespace MeteorMagnet
             internal Vector3 pile;
             internal List<Group> loot;
             internal float capturedAt;
+            internal bool delivered;
         }
 
         readonly Dictionary<Asteroid, Capture> captures = [];
         // Meteors already looked at (captured or rejected), so each one is decided only once.
         readonly HashSet<int> seen = [];
         readonly List<Magnet> magnets = [];
-        readonly HashSet<int> decorated = [];
+        readonly Dictionary<int, Light> glows = [];
+        // Vanilla container sizes by group id, used as the base size of Mk2/Mk3 storage.
+        readonly Dictionary<string, int> baseSizes = [];
+        static readonly HashSet<string> warnedNoBaseSize = [];
         readonly List<Asteroid> done = [];
 
         float nextScan;
@@ -83,8 +91,14 @@ namespace MeteorMagnet
             var planetHash = CurrentPlanetHash();
             foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
             {
-                var tier = Content.TierOf(wo?.GetGroup()?.GetId());
-                if (tier == null || !wo.GetIsPlaced())
+                var gid = wo?.GetGroup()?.GetId();
+                var tier = Content.TierOf(gid);
+                if (tier == null)
+                {
+                    RememberBaseSize(wo, gid);
+                    continue;
+                }
+                if (!wo.GetIsPlaced())
                 {
                     continue;
                 }
@@ -110,15 +124,60 @@ namespace MeteorMagnet
                 {
                     foreach (var item in magnet.inventory.GetInsideWorldObjects())
                     {
-                        var res = Content.ResonatorOf(item?.GetGroup()?.GetId());
+                        var itemId = item?.GetGroup()?.GetId();
+                        var res = Content.ResonatorOf(itemId);
                         if (res != null)
                         {
                             magnet.effects.Add(res.effect);
                         }
+                        if (RoverUpgrades.TryGet(itemId, out var type, out var upTier) && upTier > magnet.Upgrade(type))
+                        {
+                            magnet.upgrades[type] = upTier;
+                        }
                     }
+                    ApplyStorageSize(magnet);
                 }
                 magnets.Add(magnet);
-                Decorate(wo, tier);
+                Decorate(magnet);
+            }
+        }
+
+        void RememberBaseSize(WorldObject wo, string gid)
+        {
+            if (gid == null || baseSizes.ContainsKey(gid) || !gid.StartsWith("Container", StringComparison.Ordinal))
+            {
+                return;
+            }
+            var inv = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId());
+            if (inv != null)
+            {
+                baseSizes[gid] = inv.GetSize();
+            }
+        }
+
+        /// <summary>
+        /// Storage upgrades add slots on top of the size of the container the magnet is built from.
+        /// The base size is taken from a vanilla container of the same kind, since the magnet's
+        /// own (saved) size may already include a bonus.
+        /// </summary>
+        void ApplyStorageSize(Magnet magnet)
+        {
+            var baseId = magnet.tier.resolvedBaseId;
+            if (baseId == null || !baseSizes.TryGetValue(baseId, out var baseSize))
+            {
+                if (magnet.Upgrade(RoverUpgradeType.Storage) > 0 && baseId != null && warnedNoBaseSize.Add(baseId))
+                {
+                    Plugin.LogWarning("Storage upgrade needs at least one ordinary " + baseId + " built on this planet to know the base size.");
+                }
+                return;
+            }
+            var wanted = baseSize + RoverUpgrades.StorageSlotsPerTier * magnet.Upgrade(RoverUpgradeType.Storage);
+            // Never shrink below what is stored right now.
+            wanted = Mathf.Max(wanted, magnet.inventory.GetInsideWorldObjects().Count);
+            if (magnet.inventory.GetSize() != wanted)
+            {
+                magnet.inventory.SetSize(wanted);
+                Plugin.Log("Magnet " + magnet.wo.GetId() + " storage size -> " + wanted);
             }
         }
 
@@ -177,7 +236,7 @@ namespace MeteorMagnet
                     away = Vector3.forward;
                 }
 
-                captures[asteroid] = new Capture
+                var capture = new Capture
                 {
                     magnet = magnet,
                     target = magnet.position + away.normalized * Plugin.ImpactOffset,
@@ -185,6 +244,12 @@ namespace MeteorMagnet
                     loot = loot,
                     capturedAt = Time.time,
                 };
+                if (magnet.Upgrade(RoverUpgradeType.Oxygen) > 0)
+                {
+                    Deliver(capture);
+                    capture.delivered = true;
+                }
+                captures[asteroid] = capture;
                 Plugin.Log("Captured meteor with " + loot.Count + " resources for " + magnet.tier.id + " #" + magnet.wo.GetId());
             }
 
@@ -337,9 +402,10 @@ namespace MeteorMagnet
 
         void SteerCaptured()
         {
-            var maxDeg = Plugin.PullTurnRate * Time.deltaTime;
             foreach (var kv in captures)
             {
+                var speed = 1f + RoverUpgrades.SpeedTurnRatePerTier * kv.Value.magnet.Upgrade(RoverUpgradeType.Speed);
+                var maxDeg = Plugin.PullTurnRate * speed * Time.deltaTime;
                 var asteroid = kv.Key;
                 if (asteroid == null || Plugin.HasCrashed(asteroid))
                 {
@@ -377,7 +443,10 @@ namespace MeteorMagnet
                 if (landed)
                 {
                     done.Add(asteroid);
-                    Deliver(kv.Value);
+                    if (!kv.Value.delivered)
+                    {
+                        Deliver(kv.Value);
+                    }
                 }
             }
             foreach (var a in done)
@@ -428,10 +497,30 @@ namespace MeteorMagnet
                 }
             }
 
+            if (dropped != 0 && c.magnet.Upgrade(RoverUpgradeType.Beacon) > 0)
+            {
+                MarkPile(c.pile, c.magnet.Upgrade(RoverUpgradeType.Beacon));
+            }
+
             if (Plugin.ShowNotification && c.loot.Count != 0)
             {
                 Notify(c.loot[0], stored, dropped);
             }
+        }
+
+        /// <summary>
+        /// Beacon upgrade: a tall light over the loot pile for a while, so it is easy to spot.
+        /// </summary>
+        static void MarkPile(Vector3 pile, int tier)
+        {
+            var go = new GameObject("MeteorMagnet_PileMarker");
+            go.transform.position = pile + Vector3.up * 4f;
+            var light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.85f, 0.3f);
+            light.range = 10f + 5f * tier;
+            light.intensity = 4f + 2f * tier;
+            Destroy(go, 120f * tier);
         }
 
         /// <summary>
@@ -544,37 +633,45 @@ namespace MeteorMagnet
 
         /// <summary>
         /// Tints the placed magnet in its tier color and adds a glow so it does not look like a plain container.
+        /// The Lights upgrade makes the glow brighter and wider.
         /// </summary>
-        void Decorate(WorldObject wo, MagnetTier tier)
+        void Decorate(Magnet magnet)
         {
-            var go = wo.GetGameObject();
-            if (go == null || !decorated.Add(go.GetInstanceID()))
+            var go = magnet.wo.GetGameObject();
+            if (go == null)
             {
                 return;
             }
-            var color = tier.color;
-            foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
+            var key = go.GetInstanceID();
+            if (!glows.TryGetValue(key, out var light) || light == null)
             {
-                foreach (var m in r.materials)
+                var color = magnet.tier.color;
+                foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
                 {
-                    if (m.HasProperty("_BaseColor"))
+                    foreach (var m in r.materials)
                     {
-                        m.SetColor("_BaseColor", Color.Lerp(m.GetColor("_BaseColor"), color, 0.5f));
-                    }
-                    else if (m.HasProperty("_Color"))
-                    {
-                        m.color = Color.Lerp(m.color, color, 0.5f);
+                        if (m.HasProperty("_BaseColor"))
+                        {
+                            m.SetColor("_BaseColor", Color.Lerp(m.GetColor("_BaseColor"), color, 0.5f));
+                        }
+                        else if (m.HasProperty("_Color"))
+                        {
+                            m.color = Color.Lerp(m.color, color, 0.5f);
+                        }
                     }
                 }
+                var lightGo = new GameObject("MeteorMagnet_Glow");
+                lightGo.transform.SetParent(go.transform, false);
+                lightGo.transform.localPosition = new Vector3(0, 2.5f, 0);
+                light = lightGo.AddComponent<Light>();
+                light.type = LightType.Point;
+                light.color = color;
+                glows[key] = light;
             }
-            var lightGo = new GameObject("MeteorMagnet_Glow");
-            lightGo.transform.SetParent(go.transform, false);
-            lightGo.transform.localPosition = new Vector3(0, 2.5f, 0);
-            var light = lightGo.AddComponent<Light>();
-            light.type = LightType.Point;
-            light.color = color;
-            light.range = 6f + 3f * tier.level;
-            light.intensity = 2f + tier.level;
+            var level = magnet.tier.level;
+            var lights = magnet.Upgrade(RoverUpgradeType.Lights);
+            light.range = 6f + 3f * level + 8f * lights;
+            light.intensity = 2f + level + 3f * lights;
         }
     }
 }

@@ -12,6 +12,8 @@ namespace MeteorMagnet
         internal int level;
         /// <summary>Buildings to clone, first existing one wins.</summary>
         internal string[] baseGroupIds;
+        /// <summary>The base building actually used, set at registration.</summary>
+        internal string resolvedBaseId;
         /// <summary>Mk1 only redirects meteors and drops the loot next to itself; higher tiers store it.</summary>
         internal bool hasStorage;
         /// <summary>Capture radius in meters; PositiveInfinity = whole planet.</summary>
