@@ -51,6 +51,7 @@ namespace MeteorMagnet
         static ConfigEntry<string> filterKey;
         static ConfigEntry<string> moduleKey;
         static ConfigEntry<string> roverUpgradeItems;
+        static ConfigEntry<string> playerGearItems;
         static ConfigEntry<string> baseRocketId;
 
         static readonly Dictionary<string, ConfigEntry<string>> recipes = [];
@@ -105,6 +106,10 @@ namespace MeteorMagnet
             roverUpgradeItems = Config.Bind("RoverUpgrades", "Items", "",
                 "Улучшения ровера определяются автоматически по английскому названию. Если какое-то не определилось, впишите его id вручную: "
                 + "Id=Тип:Тир через запятую, типы: Speed, Storage, Lights, Beacon, Oxygen, Equipment, Logistics, Jetpack. Пример: VehicleSpeed1=Speed:1,VehicleInventory2=Storage:2");
+
+            playerGearItems = Config.Bind("PlayerGear", "Items", "",
+                "Экипировка игрока определяется автоматически по id игры (Backpack3, OxygenTank2, MultiToolMineSpeed4...). Если что-то не определилось, впишите вручную: "
+                + "Id=Тип:Тир через запятую, типы: Backpack, Exoskeleton, Jetpack, Boots, OxygenTank, MiningChip, TorchChip, DeconstructChip, Compass. Пример: EquipmentIncrease2=Exoskeleton:2");
 
             foreach (var res in Content.Resonators)
             {
@@ -211,14 +216,14 @@ namespace MeteorMagnet
         /// that it passes through the ground in a single frame. Zero acceleration freezes it in the air,
         /// so it is only reduced. Returns the original value (NaN if the field is unknown).
         /// </summary>
-        internal static float LimitAcceleration(Asteroid a)
+        internal static float LimitAcceleration(Asteroid a, float factor)
         {
             if (fAsteroidMaxAcceleration == null)
             {
                 return float.NaN;
             }
             var original = (float)fAsteroidMaxAcceleration.GetValue(a);
-            var limited = original * Content.CapturedAccelerationFactor;
+            var limited = original * factor;
             fAsteroidMaxAcceleration.SetValue(a, limited);
             Log("Meteor maxAcceleration " + original + " -> " + limited
                 + (fAsteroidInitialSpeed != null ? ", initialSpeed " + fAsteroidInitialSpeed.GetValue(a) : ""));
@@ -264,6 +269,7 @@ namespace MeteorMagnet
         static void StaticDataHandler_LoadStaticData(List<GroupData> ___groupsData)
         {
             RoverUpgrades.Detect(___groupsData, roverUpgradeItems.Value);
+            PlayerGear.Detect(___groupsData, playerGearItems.Value);
 
             var existing = ___groupsData.Where(g => g != null).Select(g => g.id).ToHashSet();
 

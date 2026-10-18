@@ -21,6 +21,14 @@ namespace MeteorMagnet
         }
 
         static readonly List<Mark> marks = [];
+        // Falling meteors tracked by scanners with a compass: tagged on screen while they fall, refreshed every frame.
+        static readonly List<(Vector3 position, Color color)> live = [];
+
+        internal static void SetLive(List<(Vector3 position, Color color)> tags)
+        {
+            live.Clear();
+            live.AddRange(tags);
+        }
         static Material material;
 
         internal static void Add(Vector3 position, Color color, string why)
@@ -67,6 +75,7 @@ namespace MeteorMagnet
                 }
             }
             marks.Clear();
+            live.Clear();
         }
 
         void Update()
@@ -99,7 +108,7 @@ namespace MeteorMagnet
 
         void OnGUI()
         {
-            if (marks.Count == 0)
+            if (marks.Count == 0 && live.Count == 0)
             {
                 return;
             }
@@ -118,7 +127,16 @@ namespace MeteorMagnet
             var h = 26f * Screen.height / 1080f;
             // Just below the game's compass.
             var y = 100f * Screen.height / 1080f;
+            var tags = new List<(Vector3 position, Color color, string prefix)>();
             foreach (var m in marks)
+            {
+                tags.Add((m.position, m.color, "▼ "));
+            }
+            foreach (var (position, color) in live)
+            {
+                tags.Add((position, color, "• "));
+            }
+            foreach (var m in tags)
             {
                 var sp = cam.WorldToScreenPoint(m.position);
                 var x = sp.x;
@@ -132,7 +150,7 @@ namespace MeteorMagnet
                 var c = m.color;
                 c.a = 1f;
                 style.normal.textColor = c;
-                GUI.Label(new Rect(x - w / 2f, y, w, h), "▼ " + dist.ToString("0") + " m", style);
+                GUI.Label(new Rect(x - w / 2f, y, w, h), m.prefix + dist.ToString("0") + " m", style);
             }
         }
     }

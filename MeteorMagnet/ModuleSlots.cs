@@ -27,6 +27,22 @@ namespace MeteorMagnet
         /// <summary>
         /// The module inventory of a building, created on first use. Null while it is being created.
         /// </summary>
+        // Extra slots from an exoskeleton inside the building, by building id (see SetExtraSlots).
+        static readonly Dictionary<int, int> extraSlots = [];
+
+        /// <summary>Exoskeleton: the building gets this many slots on top of its own from the next refresh on.</summary>
+        internal static void SetExtraSlots(int buildingId, int extra)
+        {
+            if (extra > 0)
+            {
+                extraSlots[buildingId] = extra;
+            }
+            else
+            {
+                extraSlots.Remove(buildingId);
+            }
+        }
+
         internal static Inventory Get(WorldObject building, int slots)
         {
             if (slots <= 0 || !IsHost)
@@ -34,6 +50,7 @@ namespace MeteorMagnet
                 return null;
             }
             var id = building.GetId();
+            slots += extraSlots.TryGetValue(id, out var extra) ? extra : 0;
             seenBuildings[id] = building.GetPosition();
 
             var mapping = Load();
@@ -99,6 +116,10 @@ namespace MeteorMagnet
             {
                 yield return id;
             }
+            foreach (var id in PlayerGear.AllIds())
+            {
+                yield return id;
+            }
         }
 
         /// <summary>
@@ -153,6 +174,7 @@ namespace MeteorMagnet
         {
             pending.Clear();
             authorized.Clear();
+            extraSlots.Clear();
             seenBuildings.Clear();
         }
 

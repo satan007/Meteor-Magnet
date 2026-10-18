@@ -33,6 +33,14 @@ namespace MeteorMagnet
             internal float Draw => Plugin.EnergyUse(wo.GetGroup().GetId())
                 * (effects.Contains(ResonatorEffect.PowerSaver) ? Content.PowerSaverFactor : 1f);
 
+            /// <summary>Highest tier of each kind of player equipment in the module slots.</summary>
+            internal readonly Dictionary<GearType, int> gear = [];
+
+            internal int Gear(GearType t) => gear.TryGetValue(t, out var v) ? v : 0;
+
+            /// <summary>Pile light and glow: the rover lights or the multitool torch chip, whichever is higher.</summary>
+            internal int LightTier => Math.Max(Upgrade(RoverUpgradeType.Lights), Gear(GearType.TorchChip));
+
             internal int Upgrade(RoverUpgradeType t) => upgrades.TryGetValue(t, out var v) ? v : 0;
 
             /// <summary>The building's separate module slots (see <see cref="ModuleSlots"/>).</summary>
@@ -43,6 +51,9 @@ namespace MeteorMagnet
 
             // Rover upgrades each building type makes use of.
             static readonly HashSet<RoverUpgradeType> scannerUpgrades = [RoverUpgradeType.Equipment, RoverUpgradeType.Beacon];
+            static readonly HashSet<GearType> scannerGear = [GearType.Exoskeleton, GearType.Boots, GearType.OxygenTank, GearType.Compass];
+            static readonly HashSet<GearType> magnetGear =
+                [GearType.Exoskeleton, GearType.Backpack, GearType.Jetpack, GearType.MiningChip, GearType.TorchChip, GearType.DeconstructChip];
             static readonly HashSet<RoverUpgradeType> magnetUpgrades =
                 [RoverUpgradeType.Storage, RoverUpgradeType.Speed, RoverUpgradeType.Lights, RoverUpgradeType.Logistics, RoverUpgradeType.Jetpack];
 
@@ -94,6 +105,25 @@ namespace MeteorMagnet
                         }
                         continue;
                     }
+                    if (PlayerGear.TryGet(itemId, out var gearType, out var gearTier))
+                    {
+                        var usedGear = isScanner ? scannerGear : magnetGear;
+                        if (!usedGear.Contains(gearType))
+                        {
+                            moduleReport.Add(itemId + ": IGNORED, equipment " + gearType + " has no effect in a " + here);
+                        }
+                        else if (gearTier > Gear(gearType))
+                        {
+                            moduleReport.Add(itemId + ": active -> equipment " + gearType + " T" + gearTier
+                                + (gear.ContainsKey(gearType) ? " (replaces the lower tier)" : ""));
+                            gear[gearType] = gearTier;
+                        }
+                        else
+                        {
+                            moduleReport.Add(itemId + ": IGNORED, " + gearType + " T" + Gear(gearType) + " or higher is already active");
+                        }
+                        continue;
+                    }
                     moduleReport.Add((itemId ?? "?") + ": not a module");
                 }
             }
@@ -127,12 +157,14 @@ namespace MeteorMagnet
 
             internal float ScanRadius => planetWide
                 ? float.PositiveInfinity
-                : tier.scanRadius * (effects.Contains(ResonatorEffect.RadiusBoost) ? Content.RadiusBoostFactor : 1f);
+                : tier.scanRadius * (effects.Contains(ResonatorEffect.RadiusBoost) ? Content.RadiusBoostFactor : 1f)
+                    * (1f + PlayerGear.OxygenRadiusPerTier * Gear(GearType.OxygenTank));
 
             internal float LinkFactor => Upgrade(RoverUpgradeType.Beacon) > 0 ? RoverUpgrades.BeaconLinkFactor : 1f;
 
             internal float LockTime => tier.lockTime
                 * (effects.Contains(ResonatorEffect.FasterLock) ? Content.FasterLockFactor : 1f)
+                * Mathf.Max(0.1f, 1f - PlayerGear.BootsLockPerTier * Gear(GearType.Boots))
                 * (planetWide && effects.Contains(ResonatorEffect.RadiusBoost) ? Content.LensLockFactor : 1f);
 
             internal int TrackSlots => tier.trackSlots + RoverUpgrades.EquipmentTargets(Upgrade(RoverUpgradeType.Equipment));
@@ -389,6 +421,7 @@ namespace MeteorMagnet
                         }
                     }
                     scanner.ReadModules();
+                    ModuleSlots.SetExtraSlots(wo.GetId(), scanner.Gear(GearType.Exoskeleton));
                     LogModules(scanner);
                     scanner.planetWide = scannerTier.usesSatellite
                         && scanner.effects.Contains(ResonatorEffect.SpaceLink)
@@ -414,13 +447,14 @@ namespace MeteorMagnet
                     }
                     magnet.moduleInventory = ModuleSlots.Get(wo, tier.moduleSlots);
                     magnet.ReadModules();
+                    ModuleSlots.SetExtraSlots(wo.GetId(), magnet.Gear(GearType.Exoskeleton));
                     LogModules(magnet);
                     if (magnet.inventory != null)
                     {
                         ApplyStorageSize(magnet);
                     }
                     magnets.Add(magnet);
-                    Decorate(wo, tier.color, tier.level, magnet.Upgrade(RoverUpgradeType.Lights));
+                    Decorate(wo, tier.color, tier.level, magnet.LightTier);
                 }
             }
         }
@@ -563,6 +597,9 @@ namespace MeteorMagnet
                     + ", lock-on " + sc.LockTime.ToString("0.0") + " s (rare x" + Content.RareLockFactor + ")"
                     + ", rare meteors " + (sc.tier.seesRare ? "seen" : "NOT seen")
                     + ", barren meteors " + (sc.effects.Contains(ResonatorEffect.CaptureBarren) ? "seen" : "not seen"));
+                lines.Add("  => equipment: scan radius x" + (1f + PlayerGear.OxygenRadiusPerTier * sc.Gear(GearType.OxygenTank)).ToString("0.##")
+                    + " (oxygen tank), lock-on x" + Mathf.Max(0.1f, 1f - PlayerGear.BootsLockPerTier * sc.Gear(GearType.Boots)).ToString("0.##")
+                    + " (boots), compass tags " + (sc.Gear(GearType.Compass) > 0 ? "on" : "off"));
                 lines.Add("  => filter: " + (sc.filter.Count == 0 ? "none, tracks every meteor" : "only meteors with " + string.Join("/", sc.filter)));
             }
             else if (b is Magnet m)
@@ -592,7 +629,11 @@ namespace MeteorMagnet
                     + ", storage +" + RoverUpgrades.StorageSlots(m.Upgrade(RoverUpgradeType.Storage)) + " slots"
                     + (m.Upgrade(RoverUpgradeType.Logistics) > 0 ? ", overflow to chests within " + Content.ForwardRadius.ToString("0") + " m" : "")
                     + (m.Upgrade(RoverUpgradeType.Jetpack) > 0 ? ", loot delivered at capture" : "")
-                    + (m.Upgrade(RoverUpgradeType.Lights) > 0 ? ", pile light" : ""));
+                    + (m.LightTier > 0 ? ", pile light T" + m.LightTier : ""));
+                lines.Add("  => equipment: storage +" + PlayerGear.BackpackSlotsPerTier * m.Gear(GearType.Backpack) + " slots (backpack)"
+                    + ", meteor acceleration x" + CapturedAcceleration(m).ToString("0.##") + " (jetpack)"
+                    + ", loot x" + (1f + PlayerGear.MiningLootPerTier * m.Gear(GearType.MiningChip)).ToString("0.##") + " (mining chip)"
+                    + ", core chance " + (CoreChance(m) * 100f).ToString("0.#") + "% (deconstruction chip)");
             }
             lines.Add("  => power draw " + b.Draw.ToString("0.#") + " kW"
                 + (b.effects.Contains(ResonatorEffect.PowerSaver) ? " (power saver x" + Content.PowerSaverFactor + ")" : ""));
@@ -634,7 +675,8 @@ namespace MeteorMagnet
                 }
                 return;
             }
-            var wanted = baseSize + RoverUpgrades.StorageSlots(magnet.Upgrade(RoverUpgradeType.Storage));
+            var wanted = baseSize + RoverUpgrades.StorageSlots(magnet.Upgrade(RoverUpgradeType.Storage))
+                + PlayerGear.BackpackSlotsPerTier * magnet.Gear(GearType.Backpack);
             // Never shrink below what is stored right now.
             wanted = Mathf.Max(wanted, magnet.inventory.GetInsideWorldObjects().Count);
             if (magnet.inventory.GetSize() != wanted)
@@ -793,13 +835,14 @@ namespace MeteorMagnet
                 var loot = barren ? RollBarrenLoot(asteroid, magnet) : RollLoot(asteroid, magnet);
                 var coreRoll = UnityEngine.Random.value;
                 var core = GroupsHandler.GetGroupViaId(Content.Core.id);
-                if (core != null && loot.Count != 0 && coreRoll < Plugin.CoreDropChance)
+                var coreChance = CoreChance(magnet);
+                if (core != null && loot.Count != 0 && coreRoll < coreChance)
                 {
                     loot.Add(core);
                     NotifyText("MeteorMagnet_CoreFound", DataConfig.UiInformationsType.InInventory);
                 }
-                Plugin.Log("Meteor core roll " + (coreRoll * 100f).ToString("0.0") + " vs " + (Plugin.CoreDropChance * 100f).ToString("0.0")
-                    + "% -> " + (core == null ? "core item missing" : coreRoll < Plugin.CoreDropChance ? "CORE FOUND" : "no core"));
+                Plugin.Log("Meteor core roll " + (coreRoll * 100f).ToString("0.0") + " vs " + (coreChance * 100f).ToString("0.0")
+                    + "% -> " + (core == null ? "core item missing" : coreRoll < coreChance ? "CORE FOUND" : "no core"));
                 if (loot.Count == 0)
                 {
                     magnet.busy--;
@@ -808,7 +851,7 @@ namespace MeteorMagnet
                 }
 
                 // Neutralize the impact: no resources on the ground, no damage.
-                var originalAcceleration = Plugin.LimitAcceleration(asteroid);
+                var originalAcceleration = Plugin.LimitAcceleration(asteroid, CapturedAcceleration(magnet));
                 asteroid.numberOfResourceInDebris = 0;
                 asteroid.doDamage = false;
                 asteroid.shakeOnImpact = Plugin.ShakeOnImpact;
@@ -970,6 +1013,7 @@ namespace MeteorMagnet
         /// </summary>
         void DrawMeteorLines()
         {
+            UpdateCompassTags();
             if (!Plugin.ShowMeteorLines)
             {
                 meteorLines.Clear();
@@ -1135,6 +1179,27 @@ namespace MeteorMagnet
             MeteorDisplay.UpdateAll(lines);
         }
 
+        readonly List<(Vector3 position, Color color)> compassTags = [];
+
+        /// <summary>Compass in a scanner: the meteors it tracks are tagged on screen while they fall.</summary>
+        void UpdateCompassTags()
+        {
+            compassTags.Clear();
+            foreach (var kv in tracks)
+            {
+                if (kv.Key == null || Plugin.HasCrashed(kv.Key))
+                {
+                    continue;
+                }
+                var s = FindScanner(kv.Value.scanner);
+                if (s != null && s.Gear(GearType.Compass) > 0)
+                {
+                    compassTags.Add((kv.Key.transform.position, s.tier.color));
+                }
+            }
+            MeteorMarkers.SetLive(compassTags);
+        }
+
         Scanner FindScanner(WorldObject wo)
         {
             foreach (var s in scanners)
@@ -1294,6 +1359,17 @@ namespace MeteorMagnet
             }
         }
 
+        /// <summary>Share of the game's acceleration a pulled meteor keeps; the jetpack raises it.</summary>
+        static float CapturedAcceleration(Magnet m)
+        {
+            return Mathf.Min(1f, Content.CapturedAccelerationFactor + PlayerGear.JetpackAccelerationPerTier * m.Gear(GearType.Jetpack));
+        }
+
+        static float CoreChance(Magnet m)
+        {
+            return Mathf.Clamp01(Plugin.CoreDropChance + PlayerGear.DeconstructCorePerTier * m.Gear(GearType.DeconstructChip));
+        }
+
         static float FailChance(Magnet m, bool rare)
         {
             var chance = m.tier.failChance + (rare ? Content.RareFailBonus : 0f);
@@ -1328,7 +1404,7 @@ namespace MeteorMagnet
             var angle = UnityEngine.Random.Range(120f, 240f);
             var dir = Quaternion.AngleAxis(angle, Vector3.up) * heading.normalized;
             var dist = UnityEngine.Random.Range(Content.DeflectMinDistance, Content.DeflectMaxDistance);
-            var originalAcceleration = Plugin.LimitAcceleration(asteroid);
+            var originalAcceleration = Plugin.LimitAcceleration(asteroid, Content.CapturedAccelerationFactor);
 
             captures[asteroid] = new Capture
             {
@@ -1482,6 +1558,7 @@ namespace MeteorMagnet
             {
                 mult *= Content.LootBonusFactor;
             }
+            mult *= 1f + PlayerGear.MiningLootPerTier * magnet.Gear(GearType.MiningChip);
             var total = Mathf.Max(Plugin.MinLootPerMeteor, Mathf.RoundToInt(baseCount * mult));
             var extraTypes = 0;
             var extraDuplicates = 0;
@@ -1709,9 +1786,9 @@ namespace MeteorMagnet
                 }
             }
 
-            if (dropped != 0 && c.magnet.Upgrade(RoverUpgradeType.Lights) > 0)
+            if (dropped != 0 && c.magnet.LightTier > 0)
             {
-                MarkPile(c.pile, c.magnet.Upgrade(RoverUpgradeType.Lights));
+                MarkPile(c.pile, c.magnet.LightTier);
             }
 
             MeteorStats.AddResources(c.loot);
