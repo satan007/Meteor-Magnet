@@ -724,10 +724,10 @@ namespace MeteorMagnet
 
         static List<Group> RollLoot(Asteroid asteroid, Magnet magnet)
         {
-            // numberOfResourceInDebris is a fraction of the debris pieces in vanilla data;
-            // treat values above 1 as an absolute count to be safe.
+            // numberOfResourceInDebris is how many of the debris pieces are resources
+            // (in-game: debrisNumber=25, numberOfResourceInDebris=1 for a rain meteor).
             var n = asteroid.numberOfResourceInDebris;
-            var count = n <= 1f ? asteroid.debrisNumber * n : n;
+            var count = n;
             Plugin.Log("Meteor debris=" + asteroid.debrisNumber + ", resourceInDebris=" + n);
 
             var candidates = new List<Group>();
@@ -745,7 +745,8 @@ namespace MeteorMagnet
             {
                 AddGroup(candidates, id);
             }
-            return Roll(candidates, asteroid.debrisNumber * 0.25f, magnet);
+            // Barren meteors carry no resources of their own: one piece of ore each.
+            return Roll(candidates, 1f, magnet);
         }
 
         static void AddGroup(List<Group> list, string id)
