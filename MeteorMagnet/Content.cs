@@ -34,6 +34,10 @@ namespace MeteorMagnet
         RadiusBoost,
         /// <summary>Every captured item has a chance to be duplicated.</summary>
         DuplicateChance,
+        /// <summary>Filtered-out and overflow items go to nearby containers instead of a pile.</summary>
+        ForwardToContainers,
+        /// <summary>Every meteor gives at least one of each resource type it carries.</summary>
+        EveryResourceType,
     }
 
     /// <summary>
@@ -55,6 +59,7 @@ namespace MeteorMagnet
         internal const float LootBonusFactor = 1.5f;
         internal const float RadiusBoostFactor = 2f;
         internal const float DuplicateChance = 0.25f;
+        internal const float ForwardRadius = 40f;
 
         /// <summary>What a barren meteor turns into with the Prime resonator.</summary>
         internal static readonly string[] BarrenLoot = ["Iron", "Titanium", "Magnesium", "Silicon", "Cobalt", "Aluminium"];
@@ -150,6 +155,28 @@ namespace MeteorMagnet
                 nameEn = "Toxic Catalyst",
                 descRu = "Модуль для гравитационного захвата Mk2/Mk3. Каждый пойманный ресурс с шансом 25% удваивается.",
                 descEn = "Meteor Magnet Mk2/Mk3 module. Every captured resource has a 25% chance to be doubled.",
+            },
+            new Resonator
+            {
+                id = "MeteorResonatorAqualis", planet = "Aqualis",
+                effect = ResonatorEffect.ForwardToContainers,
+                recipe = "Phosphorus,Phosphorus,Phosphorus,Alloy",
+                color = new Color(0.2f, 0.5f, 1f),
+                nameRu = "Фосфорный ретранслятор",
+                nameEn = "Phosphorus Relay",
+                descRu = "Модуль для гравитационного захвата Mk2/Mk3. То, что не прошло фильтр или не влезло, отправляется в ближайшие сундуки в радиусе 40 м, а не падает кучкой.",
+                descEn = "Meteor Magnet Mk2/Mk3 module. Filtered-out and overflow resources go to the nearest containers within 40 m instead of a pile.",
+            },
+            new Resonator
+            {
+                id = "MeteorResonatorSkeo", planet = "Skeo",
+                effect = ResonatorEffect.EveryResourceType,
+                recipe = "Amber,Amber,Amber,Alloy",
+                color = new Color(1f, 0.75f, 0f),
+                nameRu = "Янтарный сепаратор",
+                nameEn = "Amber Separator",
+                descRu = "Модуль для гравитационного захвата Mk2/Mk3. С каждого метеорита гарантированно приходит хотя бы по одному ресурсу каждого вида, который он несёт.",
+                descEn = "Meteor Magnet Mk2/Mk3 module. Every meteor gives at least one of each resource type it carries.",
             },
         ];
 

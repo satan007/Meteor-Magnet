@@ -305,9 +305,27 @@ namespace MeteorMagnet
             }
             var total = Mathf.Max(Plugin.MinLootPerMeteor, Mathf.RoundToInt(baseCount * mult));
             var duplicates = magnet.effects.Contains(ResonatorEffect.DuplicateChance);
-            for (int i = 0; i < total; i++)
+
+            var picks = new List<Group>();
+            if (magnet.effects.Contains(ResonatorEffect.EveryResourceType))
             {
-                var g = candidates[UnityEngine.Random.Range(0, candidates.Count)];
+                // One of each distinct type first, the rest is random as usual.
+                var distinct = new HashSet<string>();
+                foreach (var g in candidates)
+                {
+                    if (distinct.Add(g.GetId()))
+                    {
+                        picks.Add(g);
+                    }
+                }
+            }
+            while (picks.Count < total)
+            {
+                picks.Add(candidates[UnityEngine.Random.Range(0, candidates.Count)]);
+            }
+
+            foreach (var g in picks)
+            {
                 result.Add(g);
                 if (duplicates && UnityEngine.Random.value < Content.DuplicateChance)
                 {
@@ -376,6 +394,9 @@ namespace MeteorMagnet
                 // Re-fetch: the magnet may have been deconstructed while the meteor was falling.
                 inv = InventoriesHandler.Instance.GetInventoryById(c.magnet.wo.GetLinkedInventoryId());
             }
+            var forward = c.magnet.effects.Contains(ResonatorEffect.ForwardToContainers)
+                ? FindNearbyContainers(c.magnet)
+                : null;
 
             int stored = 0, dropped = 0;
             foreach (var g in c.loot)
@@ -383,33 +404,109 @@ namespace MeteorMagnet
                 var toStorage = inv != null
                     && (c.magnet.filter.Count == 0 || c.magnet.filter.Contains(g.GetId()))
                     && !inv.IsFull();
-                if (!toStorage)
+                if (toStorage)
                 {
-                    DropOnPile(g, c.pile);
-                    dropped++;
-                    continue;
-                }
-                stored++;
-                var group = g;
-                var pile = c.pile;
-                InventoriesHandler.Instance.AddItemToInventory(group, inv, (success, id) =>
-                {
-                    if (!success)
+                    stored++;
+                    var group = g;
+                    InventoriesHandler.Instance.AddItemToInventory(group, inv, (success, id) =>
                     {
-                        // Storage full: do not lose the item, put it on the pile instead.
-                        if (id != 0)
+                        if (!success)
                         {
-                            WorldObjectsHandler.Instance.DestroyWorldObject(id);
+                            // Storage full: do not lose the item.
+                            DestroyFailed(id);
+                            Overflow(group, forward, c.pile);
                         }
-                        DropOnPile(group, pile);
-                    }
-                });
+                    });
+                }
+                else if (Overflow(g, forward, c.pile))
+                {
+                    stored++;
+                }
+                else
+                {
+                    dropped++;
+                }
             }
 
             if (Plugin.ShowNotification && c.loot.Count != 0)
             {
                 Notify(c.loot[0], stored, dropped);
             }
+        }
+
+        /// <summary>
+        /// Puts an item that does not go into the magnet's own storage into a nearby container
+        /// (Phosphorus Relay) or on the pile. Returns true if it went to a container.
+        /// </summary>
+        static bool Overflow(Group g, List<Inventory> forward, Vector3 pile)
+        {
+            if (forward != null)
+            {
+                foreach (var target in forward)
+                {
+                    if (target.IsFull())
+                    {
+                        continue;
+                    }
+                    InventoriesHandler.Instance.AddItemToInventory(g, target, (success, id) =>
+                    {
+                        if (!success)
+                        {
+                            DestroyFailed(id);
+                            DropOnPile(g, pile);
+                        }
+                    });
+                    return true;
+                }
+            }
+            DropOnPile(g, pile);
+            return false;
+        }
+
+        static void DestroyFailed(int id)
+        {
+            if (id != 0)
+            {
+                WorldObjectsHandler.Instance.DestroyWorldObject(id);
+            }
+        }
+
+        /// <summary>
+        /// Regular containers around the magnet, nearest first.
+        /// </summary>
+        static List<Inventory> FindNearbyContainers(Magnet magnet)
+        {
+            var found = new List<(float, Inventory)>();
+            var planetHash = magnet.wo.GetPlanetHash();
+            foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
+            {
+                var gid = wo?.GetGroup()?.GetId();
+                if (gid == null || !gid.StartsWith("Container", StringComparison.Ordinal) || !wo.GetIsPlaced())
+                {
+                    continue;
+                }
+                if (wo.GetPlanetHash() != planetHash)
+                {
+                    continue;
+                }
+                var dist = Vector3.Distance(wo.GetPosition(), magnet.position);
+                if (dist > Content.ForwardRadius)
+                {
+                    continue;
+                }
+                var inv = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId());
+                if (inv != null)
+                {
+                    found.Add((dist, inv));
+                }
+            }
+            found.Sort((a, b) => a.Item1.CompareTo(b.Item1));
+            var result = new List<Inventory>();
+            foreach (var f in found)
+            {
+                result.Add(f.Item2);
+            }
+            return result;
         }
 
         static void DropOnPile(Group g, Vector3 pile)
