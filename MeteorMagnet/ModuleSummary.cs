@@ -1,6 +1,5 @@
 using SpaceCraft;
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace MeteorMagnet
 {
@@ -16,7 +15,7 @@ namespace MeteorMagnet
     /// <summary>
     /// Player-facing summary of every scanner and magnet: the totals of all its modules, in the game's language,
     /// for the panel next to the module slots. Breaking a logical limit (100% core chance, no failures...)
-    /// is congratulated once per building and session.
+    /// is congratulated right there in the panel.
     /// </summary>
     internal partial class MagnetController
     {
@@ -193,22 +192,13 @@ namespace MeteorMagnet
             return string.Join(", ", names);
         }
 
-        /// <summary>Highlights a broken limit in the panel; the first time per building and session also as a message.</summary>
+        /// <summary>Highlights a broken limit in the panel (logged once per building and session).</summary>
         static void Cheer(Building b, BuildingSummary r, string kind, string text)
         {
             r.cheers.Add(text);
             if (cheered.Add(b.wo.GetId() + ":" + kind))
             {
-                Plugin.LogInfo("Limit broken by " + b.wo.GetGroup().GetId() + " #" + b.wo.GetId() + ": " + kind);
-                try
-                {
-                    Managers.GetManager<DisplayersHandler>()?.GetInformationsDisplayer()
-                        ?.AddInformation(6f, T("Поздравляем! ", "Congratulations! ") + text, DataConfig.UiInformationsType.InInventory, null);
-                }
-                catch (System.Exception ex)
-                {
-                    Plugin.LogWarning("Congratulation message failed: " + ex.Message);
-                }
+                Plugin.Log("Limit broken by " + b.wo.GetGroup().GetId() + " #" + b.wo.GetId() + ": " + kind);
             }
         }
     }
