@@ -728,7 +728,9 @@ namespace MeteorMagnet
             // (in-game: debrisNumber=25, numberOfResourceInDebris=1 for a rain meteor).
             var n = asteroid.numberOfResourceInDebris;
             var count = n;
-            Plugin.Log("Meteor debris=" + asteroid.debrisNumber + ", resourceInDebris=" + n);
+            Plugin.Log("Meteor debris=" + asteroid.debrisNumber + ", resourceInDebris=" + n
+                + ", debrisSize=" + asteroid.debrisSize + ", scale=" + asteroid.transform.localScale.x.ToString("0.00")
+                + ", resources=" + string.Join("/", asteroid.groupsSelected.ConvertAll(g => g != null ? g.id : "?")));
 
             var candidates = new List<Group>();
             foreach (var gd in asteroid.groupsSelected)
