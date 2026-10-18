@@ -7,7 +7,7 @@ using UnityEngine;
 namespace MeteorMagnet
 {
     /// <summary>
-    /// Scans for incoming meteors, assigns them to the nearest Meteor Magnet,
+    /// Scans for incoming meteors, assigns them to the nearest Meteor Magnet that can reach them,
     /// steers them towards it and, once they land, puts their resources into the magnet's inventory.
     /// </summary>
     internal class MagnetController : MonoBehaviour
@@ -17,9 +17,22 @@ namespace MeteorMagnet
         // If a captured meteor neither crashes nor disappears in this time, deliver the loot anyway.
         const float CaptureTimeout = 90f;
 
+        class Magnet
+        {
+            internal WorldObject wo;
+            internal MagnetTier tier;
+            internal Vector3 position;
+            internal Inventory inventory;
+            internal readonly HashSet<ResonatorEffect> effects = [];
+
+            internal float Radius => tier.WholePlanet
+                ? float.PositiveInfinity
+                : tier.radius * (effects.Contains(ResonatorEffect.RadiusBoost) ? Content.RadiusBoostFactor : 1f);
+        }
+
         class Capture
         {
-            internal WorldObject magnet;
+            internal Magnet magnet;
             internal Vector3 target;
             internal List<Group> loot;
             internal float capturedAt;
@@ -28,8 +41,9 @@ namespace MeteorMagnet
         readonly Dictionary<Asteroid, Capture> captures = [];
         // Meteors already looked at (captured or rejected), so each one is decided only once.
         readonly HashSet<int> seen = [];
-        readonly List<WorldObject> magnets = [];
+        readonly List<Magnet> magnets = [];
         readonly HashSet<int> decorated = [];
+        readonly List<Asteroid> done = [];
 
         float nextScan;
 
@@ -65,7 +79,8 @@ namespace MeteorMagnet
             var planetHash = CurrentPlanetHash();
             foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
             {
-                if (wo == null || wo.GetGroup()?.GetId() != Plugin.MagnetGroupId)
+                var tier = Content.TierOf(wo?.GetGroup()?.GetId());
+                if (tier == null || !wo.GetIsPlaced())
                 {
                     continue;
                 }
@@ -73,12 +88,26 @@ namespace MeteorMagnet
                 {
                     continue;
                 }
-                if (!wo.GetIsPlaced())
+                var magnet = new Magnet
                 {
-                    continue;
+                    wo = wo,
+                    tier = tier,
+                    position = wo.GetPosition(),
+                    inventory = InventoriesHandler.Instance.GetInventoryById(wo.GetLinkedInventoryId()),
+                };
+                if (magnet.inventory != null)
+                {
+                    foreach (var item in magnet.inventory.GetInsideWorldObjects())
+                    {
+                        var res = Content.ResonatorOf(item?.GetGroup()?.GetId());
+                        if (res != null)
+                        {
+                            magnet.effects.Add(res.effect);
+                        }
+                    }
                 }
-                magnets.Add(wo);
-                Decorate(wo);
+                magnets.Add(magnet);
+                Decorate(wo, tier);
             }
         }
 
@@ -104,21 +133,18 @@ namespace MeteorMagnet
                 {
                     continue;
                 }
-                if (asteroid.groupsSelected == null || asteroid.groupsSelected.Count == 0)
-                {
-                    // Plain rock / rain / lightning: nothing to collect.
-                    continue;
-                }
+                // Barren meteors (plain rocks) can only be caught with the Prime resonator.
+                var barren = asteroid.groupsSelected == null || asteroid.groupsSelected.Count == 0;
 
                 var landing = PredictLanding(asteroid.transform);
-                var magnet = FindMagnetFor(landing);
+                var magnet = FindMagnetFor(landing, barren);
                 if (magnet == null)
                 {
-                    Plugin.Log("Meteor at " + asteroid.transform.position + " (landing ~" + landing + ") is out of range.");
+                    Plugin.Log("Meteor at " + asteroid.transform.position + " (landing ~" + landing + ", barren=" + barren + ") not captured.");
                     continue;
                 }
 
-                var loot = RollLoot(asteroid);
+                var loot = barren ? RollBarrenLoot(asteroid, magnet) : RollLoot(asteroid, magnet);
                 if (loot.Count == 0)
                 {
                     continue;
@@ -133,23 +159,21 @@ namespace MeteorMagnet
                     asteroid.placeAsteroidBody = false;
                 }
 
-                var magnetPos = magnet.GetPosition();
-                var away = landing - magnetPos;
+                var away = landing - magnet.position;
                 away.y = 0;
                 if (away.sqrMagnitude < 0.01f)
                 {
                     away = Vector3.forward;
                 }
-                var target = magnetPos + away.normalized * Plugin.ImpactOffset;
 
                 captures[asteroid] = new Capture
                 {
                     magnet = magnet,
-                    target = target,
+                    target = magnet.position + away.normalized * Plugin.ImpactOffset,
                     loot = loot,
                     capturedAt = Time.time,
                 };
-                Plugin.Log("Captured meteor with " + loot.Count + " resources for magnet " + magnet.GetId());
+                Plugin.Log("Captured meteor with " + loot.Count + " resources for " + magnet.tier.id + " #" + magnet.wo.GetId());
             }
 
             if (seen.Count > 4096)
@@ -180,7 +204,7 @@ namespace MeteorMagnet
             var groundY = 0f;
             foreach (var m in magnets)
             {
-                groundY += m.GetPosition().y;
+                groundY += m.position.y;
             }
             groundY /= magnets.Count;
             if (f.y < -0.01f && p.y > groundY)
@@ -190,22 +214,27 @@ namespace MeteorMagnet
             return p;
         }
 
-        WorldObject FindMagnetFor(Vector3 landing)
+        /// <summary>
+        /// Picks the closest magnet whose radius covers the landing point and which still has room.
+        /// </summary>
+        Magnet FindMagnetFor(Vector3 landing, bool barren)
         {
-            WorldObject best = null;
+            Magnet best = null;
             var bestDist = float.MaxValue;
-            var radius = Plugin.CaptureRadius;
             foreach (var m in magnets)
             {
-                var d = m.GetPosition() - landing;
-                d.y = 0;
-                var dist = d.magnitude;
-                if (!Plugin.CaptureEverywhere && dist > radius)
+                if (barren && !m.effects.Contains(ResonatorEffect.CaptureBarren))
                 {
                     continue;
                 }
-                var inv = InventoriesHandler.Instance.GetInventoryById(m.GetLinkedInventoryId());
-                if (inv == null || inv.IsFull())
+                var d = m.position - landing;
+                d.y = 0;
+                var dist = d.magnitude;
+                if (dist > m.Radius)
+                {
+                    continue;
+                }
+                if (m.inventory == null || m.inventory.IsFull())
                 {
                     continue;
                 }
@@ -218,37 +247,63 @@ namespace MeteorMagnet
             return best;
         }
 
-        static List<Group> RollLoot(Asteroid asteroid)
+        static List<Group> RollLoot(Asteroid asteroid, Magnet magnet)
         {
             // numberOfResourceInDebris is a fraction of the debris pieces in vanilla data;
             // treat values above 1 as an absolute count to be safe.
             var n = asteroid.numberOfResourceInDebris;
             var count = n <= 1f ? asteroid.debrisNumber * n : n;
-            var total = Mathf.Max(Plugin.MinLootPerMeteor, Mathf.RoundToInt(count * Plugin.LootMultiplier));
-            Plugin.Log("Meteor debris=" + asteroid.debrisNumber + ", resourceInDebris=" + n + " -> " + total + " items");
+            Plugin.Log("Meteor debris=" + asteroid.debrisNumber + ", resourceInDebris=" + n);
 
             var candidates = new List<Group>();
             foreach (var gd in asteroid.groupsSelected)
             {
-                if (gd == null)
-                {
-                    continue;
-                }
-                var g = GroupsHandler.GetGroupViaId(gd.id);
-                if (g != null)
-                {
-                    candidates.Add(g);
-                }
+                AddGroup(candidates, gd?.id);
             }
+            return Roll(candidates, count, magnet);
+        }
 
+        static List<Group> RollBarrenLoot(Asteroid asteroid, Magnet magnet)
+        {
+            var candidates = new List<Group>();
+            foreach (var id in Content.BarrenLoot)
+            {
+                AddGroup(candidates, id);
+            }
+            return Roll(candidates, asteroid.debrisNumber * 0.25f, magnet);
+        }
+
+        static void AddGroup(List<Group> list, string id)
+        {
+            var g = id != null ? GroupsHandler.GetGroupViaId(id) : null;
+            if (g != null)
+            {
+                list.Add(g);
+            }
+        }
+
+        static List<Group> Roll(List<Group> candidates, float baseCount, Magnet magnet)
+        {
             var result = new List<Group>();
             if (candidates.Count == 0)
             {
                 return result;
             }
+            var mult = Plugin.LootMultiplier;
+            if (magnet.effects.Contains(ResonatorEffect.LootBonus))
+            {
+                mult *= Content.LootBonusFactor;
+            }
+            var total = Mathf.Max(Plugin.MinLootPerMeteor, Mathf.RoundToInt(baseCount * mult));
+            var duplicates = magnet.effects.Contains(ResonatorEffect.DuplicateChance);
             for (int i = 0; i < total; i++)
             {
-                result.Add(candidates[UnityEngine.Random.Range(0, candidates.Count)]);
+                var g = candidates[UnityEngine.Random.Range(0, candidates.Count)];
+                result.Add(g);
+                if (duplicates && UnityEngine.Random.value < Content.DuplicateChance)
+                {
+                    result.Add(g);
+                }
             }
             return result;
         }
@@ -279,8 +334,6 @@ namespace MeteorMagnet
             }
         }
 
-        readonly List<Asteroid> done = [];
-
         void CheckLanded()
         {
             if (captures.Count == 0)
@@ -308,10 +361,11 @@ namespace MeteorMagnet
 
         static void Deliver(Capture c)
         {
-            var inv = InventoriesHandler.Instance.GetInventoryById(c.magnet.GetLinkedInventoryId());
+            // Re-fetch: the magnet may have been deconstructed while the meteor was falling.
+            var inv = InventoriesHandler.Instance.GetInventoryById(c.magnet.wo.GetLinkedInventoryId());
             if (inv == null)
             {
-                Plugin.LogWarning("Magnet " + c.magnet.GetId() + " has no inventory; loot lost.");
+                Plugin.LogWarning("Magnet " + c.magnet.wo.GetId() + " has no inventory; loot lost.");
                 return;
             }
             foreach (var g in c.loot)
@@ -350,16 +404,16 @@ namespace MeteorMagnet
         }
 
         /// <summary>
-        /// Gives the placed magnet a purple glow so it does not look like a plain container.
+        /// Tints the placed magnet in its tier color and adds a glow so it does not look like a plain container.
         /// </summary>
-        void Decorate(WorldObject wo)
+        void Decorate(WorldObject wo, MagnetTier tier)
         {
             var go = wo.GetGameObject();
             if (go == null || !decorated.Add(go.GetInstanceID()))
             {
                 return;
             }
-            var color = new Color(0.55f, 0.25f, 1f);
+            var color = tier.color;
             foreach (var r in go.GetComponentsInChildren<MeshRenderer>())
             {
                 foreach (var m in r.materials)
@@ -380,8 +434,8 @@ namespace MeteorMagnet
             var light = lightGo.AddComponent<Light>();
             light.type = LightType.Point;
             light.color = color;
-            light.range = 8f;
-            light.intensity = 3f;
+            light.range = 6f + 3f * tier.level;
+            light.intensity = 2f + tier.level;
         }
     }
 }

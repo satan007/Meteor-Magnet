@@ -48,10 +48,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="MeteorMagnet.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="*.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="DeployToGame" AfterTargets="Build" Condition="Exists('$(GameDir)\BepInEx')">
-    <Copy SourceFiles="$(TargetDir)$(AssemblyName).dll;$(TargetDir)MeteorMagnet.png" DestinationFolder="$(PluginsFolder)" />
+    <ItemGroup>
+      <PngFiles Include="$(TargetDir)*.png" />
+    </ItemGroup>
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).dll;@(PngFiles)" DestinationFolder="$(PluginsFolder)" />
   </Target>
 </Project>

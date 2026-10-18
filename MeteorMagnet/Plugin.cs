@@ -14,23 +14,19 @@ using UnityEngine;
 namespace MeteorMagnet
 {
     /// <summary>
-    /// Adds a buildable "Meteor Magnet": a storage device that pulls incoming meteors
-    /// towards itself and stores all of their resources in its own inventory,
-    /// so nothing needs to be picked up from the ground.
+    /// Adds the buildable "Meteor Magnet" in three tiers: storage devices that pull incoming meteors
+    /// towards themselves and store all of their resources, so nothing needs to be picked up from the ground.
+    /// Planet-exclusive resources can be crafted into resonators that give a magnet an extra ability.
     /// </summary>
     [BepInPlugin("satan007.theplanetcrafter.meteormagnet", "Meteor Magnet", PluginInfo.PLUGIN_VERSION)]
     public class Plugin : BaseUnityPlugin
     {
-        internal const string MagnetGroupId = "MeteorMagnet";
-
-        // The building is a clone of the big storage container so it gets an inventory for free.
-        const string BaseGroupId = "Container2";
+        // Resonators are clones of this item (it is craftable and has a small model).
+        const string ResonatorBaseGroupId = "Rod-uranium";
 
         static ManualLogSource logger;
 
         static ConfigEntry<bool> modEnabled;
-        static ConfigEntry<float> captureRadius;
-        static ConfigEntry<bool> captureEverywhere;
         static ConfigEntry<float> lootMultiplier;
         static ConfigEntry<int> minLootPerMeteor;
         static ConfigEntry<bool> pullMeteors;
@@ -38,10 +34,11 @@ namespace MeteorMagnet
         static ConfigEntry<float> impactOffset;
         static ConfigEntry<bool> leaveAsteroidBody;
         static ConfigEntry<bool> shakeOnImpact;
-        static ConfigEntry<string> recipe;
-        static ConfigEntry<float> unlockTerraformation;
         static ConfigEntry<bool> showNotification;
         static ConfigEntry<bool> debugLog;
+
+        static readonly Dictionary<string, ConfigEntry<string>> recipes = [];
+        static readonly Dictionary<string, ConfigEntry<float>> tierUnlocks = [];
 
         static AccessTools.FieldRef<Asteroid, bool> fAsteroidHasCrashed;
 
@@ -55,8 +52,6 @@ namespace MeteorMagnet
             modEnabled = Config.Bind("General", "Enabled", true, "Включён ли мод.");
             debugLog = Config.Bind("General", "DebugLog", false, "Подробный лог в BepInEx/LogOutput.log.");
 
-            captureRadius = Config.Bind("Capture", "Radius", 400f, "Радиус захвата в метрах (считается по горизонтали от устройства до точки падения метеорита).");
-            captureEverywhere = Config.Bind("Capture", "Everywhere", false, "Захватывать вообще все метеориты на планете, независимо от радиуса.");
             lootMultiplier = Config.Bind("Capture", "LootMultiplier", 1f, "Множитель количества ресурсов с одного метеорита.");
             minLootPerMeteor = Config.Bind("Capture", "MinLootPerMeteor", 1, "Минимум ресурсов с одного метеорита (если у метеорита вообще есть ресурсы).");
             showNotification = Config.Bind("Capture", "ShowNotification", true, "Показывать сообщение при захвате метеорита.");
@@ -67,10 +62,16 @@ namespace MeteorMagnet
             leaveAsteroidBody = Config.Bind("Visual", "LeaveAsteroidBody", false, "Оставлять ли тело метеорита/кратер на месте падения.");
             shakeOnImpact = Config.Bind("Visual", "ShakeOnImpact", false, "Тряска камеры при падении захваченного метеорита.");
 
-            recipe = Config.Bind("Building", "Recipe", "Alloy,Alloy,Titanium,Titanium,Iron,Iron,Rod-uranium",
-                "Рецепт устройства: id предметов через запятую. Неизвестные id пропускаются.");
-            unlockTerraformation = Config.Bind("Building", "UnlockAtTerraformation", 0f,
-                "Индекс терраформации (Ti), при котором открывается устройство. 0 = доступно сразу.");
+            foreach (var tier in Content.Tiers)
+            {
+                var section = "Tier Mk" + tier.level;
+                recipes[tier.id] = Config.Bind(section, "Recipe", tier.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются.");
+                tierUnlocks[tier.id] = Config.Bind(section, "UnlockAtTerraformation", tier.unlockTi, "Индекс терраформации (Ti), при котором открывается этот тир. 0 = доступно сразу.");
+            }
+            foreach (var res in Content.Resonators)
+            {
+                recipes[res.id] = Config.Bind("Resonator " + res.planet, "Recipe", res.recipe, "Рецепт резонатора: id предметов через запятую. Неизвестные id пропускаются.");
+            }
 
             fAsteroidHasCrashed = TryFieldRef<Asteroid, bool>("hasCrashed");
 
@@ -86,8 +87,6 @@ namespace MeteorMagnet
         }
 
         internal static bool Enabled => modEnabled.Value;
-        internal static float CaptureRadius => captureRadius.Value;
-        internal static bool CaptureEverywhere => captureEverywhere.Value;
         internal static float LootMultiplier => lootMultiplier.Value;
         internal static int MinLootPerMeteor => minLootPerMeteor.Value;
         internal static bool PullMeteors => pullMeteors.Value;
@@ -98,7 +97,6 @@ namespace MeteorMagnet
         internal static bool ShowNotification => showNotification.Value;
 
         internal static bool HasCrashed(Asteroid a) => fAsteroidHasCrashed != null && fAsteroidHasCrashed(a);
-        internal static bool CanDetectCrash => fAsteroidHasCrashed != null;
 
         internal static void Log(string s)
         {
@@ -128,51 +126,82 @@ namespace MeteorMagnet
         [HarmonyPatch(typeof(StaticDataHandler), "LoadStaticData")]
         static void StaticDataHandler_LoadStaticData(List<GroupData> ___groupsData)
         {
-            if (___groupsData.Any(g => g != null && g.id == MagnetGroupId))
-            {
-                return;
-            }
+            var existing = ___groupsData.Where(g => g != null).Select(g => g.id).ToHashSet();
 
-            if (___groupsData.Find(g => g != null && g.id == BaseGroupId) is not GroupDataConstructible baseGroup)
+            foreach (var tier in Content.Tiers)
             {
-                logger.LogError("Base building " + BaseGroupId + " not found, Meteor Magnet will not be available.");
-                return;
-            }
-
-            var magnet = Instantiate(baseGroup);
-            magnet.name = MagnetGroupId;
-            magnet.id = MagnetGroupId;
-            magnet.terraformStageUnlock = null;
-            magnet.unlockingWorldUnit = DataConfig.WorldUnitType.Terraformation;
-            magnet.unlockingValue = unlockTerraformation.Value;
-            magnet.tradeValue = 0;
-
-            magnet.recipeIngredients = [];
-            foreach (var raw in recipe.Value.Split(','))
-            {
-                var id = raw.Trim();
-                if (id.Length == 0)
+                if (existing.Contains(tier.id))
                 {
                     continue;
                 }
-                if (___groupsData.Find(g => g != null && g.id == id) is GroupDataItem ingredient)
+                var baseGroup = ___groupsData.Find(g => g != null && g.id == tier.baseGroupId) as GroupDataConstructible
+                    ?? ___groupsData.Find(g => g != null && g.id == tier.fallbackBaseGroupId) as GroupDataConstructible;
+                if (baseGroup == null)
                 {
-                    magnet.recipeIngredients.Add(ingredient);
+                    logger.LogError("No base building for " + tier.id + ", it will not be available.");
+                    continue;
+                }
+
+                var magnet = Instantiate(baseGroup);
+                SetupClone(magnet, tier.id, ___groupsData);
+                magnet.unlockingValue = tierUnlocks[tier.id].Value;
+                ___groupsData.Add(magnet);
+                Log("Registered building " + tier.id + " (base " + baseGroup.id + ")");
+            }
+
+            if (___groupsData.Find(g => g != null && g.id == ResonatorBaseGroupId) is not GroupDataItem resonatorBase)
+            {
+                logger.LogError("Base item " + ResonatorBaseGroupId + " not found, resonators will not be available.");
+                return;
+            }
+            foreach (var res in Content.Resonators)
+            {
+                if (existing.Contains(res.id))
+                {
+                    continue;
+                }
+                var item = Instantiate(resonatorBase);
+                SetupClone(item, res.id, ___groupsData);
+                item.unlockingValue = 0f;
+                ___groupsData.Add(item);
+                Log("Registered resonator " + res.id);
+            }
+        }
+
+        static void SetupClone(GroupData gd, string id, List<GroupData> groupsData)
+        {
+            gd.name = id;
+            gd.id = id;
+            gd.terraformStageUnlock = null;
+            gd.unlockingWorldUnit = DataConfig.WorldUnitType.Terraformation;
+            if (gd is GroupDataItem item)
+            {
+                item.tradeValue = 0;
+            }
+
+            gd.recipeIngredients = [];
+            foreach (var raw in recipes[id].Value.Split(','))
+            {
+                var ingredientId = raw.Trim();
+                if (ingredientId.Length == 0)
+                {
+                    continue;
+                }
+                if (groupsData.Find(g => g != null && g.id == ingredientId) is GroupDataItem ingredient)
+                {
+                    gd.recipeIngredients.Add(ingredient);
                 }
                 else
                 {
-                    logger.LogWarning("Recipe ingredient '" + id + "' not found, skipping.");
+                    logger.LogWarning(id + ": recipe ingredient '" + ingredientId + "' not found, skipping.");
                 }
             }
 
-            var icon = LoadIcon("MeteorMagnet.png");
+            var icon = LoadIcon(id + ".png");
             if (icon != null)
             {
-                magnet.icon = icon;
+                gd.icon = icon;
             }
-
-            ___groupsData.Add(magnet);
-            Log("Registered building " + MagnetGroupId + " with " + magnet.recipeIngredients.Count + " ingredients.");
         }
 
         static Sprite LoadIcon(string file)
@@ -184,7 +213,7 @@ namespace MeteorMagnet
             }
             var tex = new Texture2D(1, 1);
             tex.LoadImage(File.ReadAllBytes(path));
-            tex.name = "MeteorMagnetIcon";
+            tex.name = Path.GetFileNameWithoutExtension(file);
             return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
         }
 
@@ -192,14 +221,15 @@ namespace MeteorMagnet
         [HarmonyPatch(typeof(UnlockedGroupsHandler), "SetUnlockedGroups")]
         static void UnlockedGroupsHandler_SetUnlockedGroups(NetworkList<int> ____unlockedGroups)
         {
-            if (unlockTerraformation.Value > 0f)
+            var ids = Content.Tiers.Where(t => tierUnlocks[t.id].Value <= 0f).Select(t => t.id)
+                .Concat(Content.Resonators.Select(r => r.id));
+            foreach (var id in ids)
             {
-                return;
-            }
-            var group = GroupsHandler.GetGroupViaId(MagnetGroupId);
-            if (group != null && !____unlockedGroups.Contains(group.stableHashCode))
-            {
-                ____unlockedGroups.Add(group.stableHashCode);
+                var group = GroupsHandler.GetGroupViaId(id);
+                if (group != null && !____unlockedGroups.Contains(group.stableHashCode))
+                {
+                    ____unlockedGroups.Add(group.stableHashCode);
+                }
             }
         }
 
@@ -209,18 +239,19 @@ namespace MeteorMagnet
         {
             foreach (var kv in ___localizationDictionary)
             {
-                if (kv.Key == "russian")
+                var ru = kv.Key == "russian";
+                var dict = kv.Value;
+                foreach (var t in Content.Tiers)
                 {
-                    kv.Value["GROUP_NAME_" + MagnetGroupId] = "Гравитационный захват";
-                    kv.Value["GROUP_DESC_" + MagnetGroupId] = "Притягивает падающие метеориты и складывает все их ресурсы в своё хранилище.";
-                    kv.Value["MeteorMagnet_Captured"] = "Метеорит захвачен";
+                    dict["GROUP_NAME_" + t.id] = ru ? t.nameRu : t.nameEn;
+                    dict["GROUP_DESC_" + t.id] = ru ? t.descRu : t.descEn;
                 }
-                else
+                foreach (var r in Content.Resonators)
                 {
-                    kv.Value["GROUP_NAME_" + MagnetGroupId] = "Meteor Magnet";
-                    kv.Value["GROUP_DESC_" + MagnetGroupId] = "Pulls incoming meteors in and stores all of their resources in its own storage.";
-                    kv.Value["MeteorMagnet_Captured"] = "Meteor captured";
+                    dict["GROUP_NAME_" + r.id] = ru ? r.nameRu : r.nameEn;
+                    dict["GROUP_DESC_" + r.id] = ru ? r.descRu : r.descEn;
                 }
+                dict["MeteorMagnet_Captured"] = ru ? "Метеорит захвачен" : "Meteor captured";
             }
         }
     }
