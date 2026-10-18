@@ -37,6 +37,7 @@ namespace MeteorMagnet
         static ConfigEntry<bool> showSignalLines;
         static ConfigEntry<float> signalLineWidth;
         static ConfigEntry<float> signalLineOpacity;
+        static ConfigEntry<bool> showMeteorLines;
         static ConfigEntry<bool> showNotification;
         static ConfigEntry<bool> debugLog;
         static ConfigEntry<string> filterKey;
@@ -75,6 +76,7 @@ namespace MeteorMagnet
             showSignalLines = Config.Bind("Visual", "ShowSignalLines", true, "Показывать линии сигнала: сканер → реле → захват.");
             signalLineWidth = Config.Bind("Visual", "SignalLineWidth", 0.03f, "Толщина линии сигнала в метрах (к концам линия сужается вдвое).");
             signalLineOpacity = Config.Bind("Visual", "SignalLineOpacity", 0.4f, "Непрозрачность линии сигнала: 0 — невидима, 1 — сплошная.");
+            showMeteorLines = Config.Bind("Visual", "ShowMeteorLines", true, "Отладка: лучи от сканера к метеориту, который он ведёт (бледный — идёт захват цели, яркий — цель захвачена), и от захвата к метеориту, который он тянет (красный — метеорит отбрасывается).");
 
             foreach (var def in Content.Buildings)
             {
@@ -129,6 +131,7 @@ namespace MeteorMagnet
         internal static bool ShowSignalLines => showSignalLines.Value;
         internal static float SignalLineWidth => Mathf.Clamp(signalLineWidth.Value, 0.005f, 1f);
         internal static float SignalLineOpacity => Mathf.Clamp01(signalLineOpacity.Value);
+        internal static bool ShowMeteorLines => showMeteorLines.Value;
         internal static bool ShowNotification => showNotification.Value;
         internal static string FilterKey => filterKey.Value.Contains("<") ? filterKey.Value : "<Keyboard>/" + filterKey.Value;
         internal static string ModuleKey => moduleKey.Value.Contains("<") ? moduleKey.Value : "<Keyboard>/" + moduleKey.Value;

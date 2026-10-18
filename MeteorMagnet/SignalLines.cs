@@ -4,8 +4,9 @@ using UnityEngine;
 namespace MeteorMagnet
 {
     /// <summary>
-    /// Glowing arcs that show the meteor network: scanner -> relay -> relay -> magnet.
-    /// Lines are rebuilt from the network on every refresh; unchanged ones are reused.
+    /// Glowing arcs that show the meteor network: scanner -> relay -> relay -> magnet,
+    /// or straight debug beams from buildings to meteors.
+    /// Lines are rebuilt on every refresh; unchanged ones are reused.
     /// </summary>
     internal class SignalLines
     {
@@ -13,6 +14,19 @@ namespace MeteorMagnet
         // Thin in the middle of the span, a bit thinner at the ends, like a beam rather than a cable.
         static readonly AnimationCurve taper = new(
             new Keyframe(0f, 0.5f), new Keyframe(0.15f, 1f), new Keyframe(0.85f, 1f), new Keyframe(1f, 0.5f));
+        // Debug beams reach meteors hundreds of metres away: thin at the building, wide at the meteor,
+        // so both ends stay visible.
+        const float WideningFactor = 40f;
+        static readonly AnimationCurve widening = new(new Keyframe(0f, 1f / WideningFactor), new Keyframe(1f, 1f));
+
+        readonly string name;
+        readonly bool arc;
+
+        internal SignalLines(string name, bool arc)
+        {
+            this.name = name;
+            this.arc = arc;
+        }
         const float Lift = 3f;
 
         static readonly string[] shaderNames =
@@ -35,7 +49,7 @@ namespace MeteorMagnet
             used.Clear();
         }
 
-        /// <summary>Draws (or keeps) an arc between two network nodes.</summary>
+        /// <summary>Draws (or keeps) a line between two points.</summary>
         internal void Edge(int fromId, Vector3 from, Color fromColor, int toId, Vector3 to, Color toColor)
         {
             if (!EnsureMaterial())
@@ -50,9 +64,9 @@ namespace MeteorMagnet
                 go.transform.SetParent(root.transform, false);
                 lr = go.AddComponent<LineRenderer>();
                 lr.material = material;
-                lr.positionCount = Segments + 1;
+                lr.positionCount = arc ? Segments + 1 : 2;
                 lr.useWorldSpace = true;
-                lr.widthCurve = taper;
+                lr.widthCurve = arc ? taper : widening;
                 lr.numCapVertices = 0;
                 lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 lr.receiveShadows = false;
@@ -61,15 +75,23 @@ namespace MeteorMagnet
 
             var a = from + Vector3.up * Lift;
             var b = to + Vector3.up * Lift;
-            // Arc: a quadratic curve bulging upwards by a fifth of the distance.
-            var control = (a + b) * 0.5f + Vector3.up * (Vector3.Distance(a, b) * 0.2f);
-            for (int i = 0; i <= Segments; i++)
+            if (!arc)
             {
-                var t = i / (float)Segments;
-                var p = (1 - t) * (1 - t) * a + 2 * (1 - t) * t * control + t * t * b;
-                lr.SetPosition(i, p);
+                lr.SetPosition(0, a);
+                lr.SetPosition(1, to);
             }
-            lr.widthMultiplier = Plugin.SignalLineWidth;
+            else
+            {
+                // Arc: a quadratic curve bulging upwards by a fifth of the distance.
+                var control = (a + b) * 0.5f + Vector3.up * (Vector3.Distance(a, b) * 0.2f);
+                for (int i = 0; i <= Segments; i++)
+                {
+                    var t = i / (float)Segments;
+                    var p = (1 - t) * (1 - t) * a + 2 * (1 - t) * t * control + t * t * b;
+                    lr.SetPosition(i, p);
+                }
+            }
+            lr.widthMultiplier = Plugin.SignalLineWidth * (arc ? 1f : WideningFactor);
             var alpha = Plugin.SignalLineOpacity;
             fromColor.a *= alpha;
             toColor.a *= alpha;
@@ -110,7 +132,7 @@ namespace MeteorMagnet
             {
                 if (root == null)
                 {
-                    root = new GameObject("MeteorMagnet_SignalLines");
+                    root = new GameObject(name);
                 }
                 return true;
             }
@@ -125,7 +147,7 @@ namespace MeteorMagnet
                 {
                     material = new Material(shader);
                     Plugin.Log("Signal lines use shader " + name);
-                    root = new GameObject("MeteorMagnet_SignalLines");
+                    root = new GameObject(name);
                     return true;
                 }
             }

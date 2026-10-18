@@ -184,6 +184,7 @@ dotnet build -c Release -p:GameDir="C:\Program Files (x86)\Steam\steamapps\commo
 | Visual | ShowSignalLines | true | Линии сигнала сканер → реле → захват |
 | Visual | SignalLineWidth | 0.03 | Толщина линии сигнала, м (к концам сужается) |
 | Visual | SignalLineOpacity | 0.4 | Непрозрачность линии: 0 — невидима, 1 — сплошная |
+| Visual | ShowMeteorLines | true | Отладочные лучи: сканер → ведомый метеорит (бледный — идёт захват цели, яркий — цель захвачена), захват → притягиваемый метеорит (красный — отброс) |
 | Scanner Mk1..3, Magnet Mk1..3, Relay, Satellite Rocket | Recipe / UnlockAtTerraformation | см. таблицы построек | Рецепт и порог открытия |
 | Module SpaceLink | Recipe | см. «Спутник» | Рецепт модуля космической связи |
 | Satellite Rocket | BaseRocket | пусто | Id игровой ракеты, которую копирует спутниковая (пусто = найти автоматически) |
