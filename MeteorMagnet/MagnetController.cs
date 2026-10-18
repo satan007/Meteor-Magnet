@@ -126,6 +126,19 @@ namespace MeteorMagnet
                     }
                     moduleReport.Add((itemId ?? "?") + ": not a module");
                 }
+
+                // Rover upgrades and player equipment are made for other machines: they work only through
+                // the matching simulation module in the same building.
+                if (upgrades.Count != 0 && !effects.Contains(ResonatorEffect.RoverSimulation))
+                {
+                    moduleReport.Add("rover upgrades INACTIVE (" + string.Join(", ", upgrades.Keys) + "): no Rover Simulation module here");
+                    upgrades.Clear();
+                }
+                if (gear.Count != 0 && !effects.Contains(ResonatorEffect.GearSimulation))
+                {
+                    moduleReport.Add("equipment INACTIVE (" + string.Join(", ", gear.Keys) + "): no Equipment Simulation module here");
+                    gear.Clear();
+                }
             }
         }
 

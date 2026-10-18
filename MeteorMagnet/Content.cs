@@ -134,6 +134,10 @@ namespace MeteorMagnet
         ExtraCaptureSlot,
         /// <summary>Scanner: locks on faster.</summary>
         FasterLock,
+        /// <summary>Scanner or magnet: rover upgrades in the same building work only with it.</summary>
+        RoverSimulation,
+        /// <summary>Scanner or magnet: player equipment in the same building works only with it.</summary>
+        GearSimulation,
     }
 
     /// <summary>
@@ -536,6 +540,28 @@ namespace MeteorMagnet
                 nameEn = "Guidance Module",
                 descRu = "Модуль сканера. Захват цели на 30% быстрее.",
                 descEn = "Scanner module. Locks on 30% faster.",
+            },
+            new Resonator
+            {
+                id = "MeteorRoverSimulation", planet = null, forBoth = true,
+                effect = ResonatorEffect.RoverSimulation,
+                recipe = "MeteorCore,Aluminium,Aluminium,Silicon,Silicon,Iron",
+                color = new Color(1f, 0.6f, 0.2f),
+                nameRu = "Модуль симуляции ровера",
+                nameEn = "Rover Simulation Module",
+                descRu = "Модуль сканера или захвата. Эмулирует бортовую систему ровера: без него улучшения ровера в этой постройке не работают.",
+                descEn = "Scanner or magnet module. Emulates a rover's onboard system: rover upgrades in this building work only with it.",
+            },
+            new Resonator
+            {
+                id = "MeteorGearSimulation", planet = null, forBoth = true,
+                effect = ResonatorEffect.GearSimulation,
+                recipe = "MeteorCore,Silicon,Silicon,Cobalt,Cobalt,Titanium",
+                color = new Color(0.85f, 0.85f, 0.95f),
+                nameRu = "Модуль симуляции экипировки",
+                nameEn = "Equipment Simulation Module",
+                descRu = "Модуль сканера или захвата. Эмулирует скафандр: без него экипировка игрока в этой постройке не работает.",
+                descEn = "Scanner or magnet module. Emulates a spacesuit: player equipment in this building works only with it.",
             },
         ];
 
