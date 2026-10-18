@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>MeteorMagnet</AssemblyName>
+    <RootNamespace>MeteorMagnet</RootNamespace>
+    <Description>Meteor Magnet</Description>
+    <Version>0.1.0</Version>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RestoreAdditionalProjectSources>
+      https://api.nuget.org/v3/index.json;
+      https://nuget.bepinex.dev/v3/index.json
+    </RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <!--
+    Путь к игре. Можно переопределить: dotnet build -p:GameDir="D:\Games\The Planet Crafter"
+  -->
+  <PropertyGroup Condition="'$(GameDir)' == ''">
+    <GameDir>C:\Program Files (x86)\Steam\steamapps\common\The Planet Crafter</GameDir>
+  </PropertyGroup>
+  <PropertyGroup>
+    <GameManaged>$(GameDir)\Planet Crafter_Data\Managed\</GameManaged>
+    <PluginsFolder>$(GameDir)\BepInEx\plugins\MeteorMagnet</PluginsFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
+    <PackageReference Include="BepInEx.Core" Version="5.*" />
+    <PackageReference Include="BepInEx.PluginInfoProps" Version="1.*" />
+    <PackageReference Include="UnityEngine.Modules" Version="2023.2.19" IncludeAssets="compile" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GameManaged)Assembly-CSharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.Netcode.Runtime">
+      <HintPath>$(GameManaged)Unity.Netcode.Runtime.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.Mathematics">
+      <HintPath>$(GameManaged)Unity.Mathematics.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="MeteorMagnet.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="DeployToGame" AfterTargets="Build" Condition="Exists('$(GameDir)\BepInEx')">
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).dll;$(TargetDir)MeteorMagnet.png" DestinationFolder="$(PluginsFolder)" />
+  </Target>
+</Project>
