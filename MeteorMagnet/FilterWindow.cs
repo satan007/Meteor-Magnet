@@ -25,6 +25,22 @@ namespace MeteorMagnet
         bool isScanner;
         // Building whose module slots are open (0 = none): its summary is shown next to the window.
         static int modulesOf;
+        // The meteor display's statistics window is open.
+        static bool statsOpen;
+
+        /// <summary>Opens the network statistics window (using the meteor display).</summary>
+        internal static void OpenStats()
+        {
+            var wh = Managers.GetManager<WindowsHandler>();
+            if (wh == null || wh.GetHasUiOpen())
+            {
+                return;
+            }
+            statsOpen = true;
+            fWindowsHandlerOpenedUi(wh) = DataConfig.UiType.TextInput;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
         readonly List<Group> candidates = [];
         readonly HashSet<string> selected = [];
         Vector2 scroll;
@@ -58,6 +74,19 @@ namespace MeteorMagnet
             {
                 modulesOf = 0;
             }
+            if (statsOpen)
+            {
+                if (!wh.GetHasUiOpen())
+                {
+                    statsOpen = false;
+                }
+                else if (Keyboard.current != null && Keyboard.current[Key.Escape].wasPressedThisFrame)
+                {
+                    statsOpen = false;
+                    wh.CloseAllWindows();
+                }
+                return;
+            }
 
             if (magnet != null)
             {
@@ -84,6 +113,11 @@ namespace MeteorMagnet
             }
             if (!openAction.WasPressedThisFrame())
             {
+                return;
+            }
+            if (MeteorDisplay.IsDisplay(AimedWorldObject()))
+            {
+                OpenStats();
                 return;
             }
             var target = FindAimedFilterable();
@@ -237,6 +271,10 @@ namespace MeteorMagnet
             {
                 DrawSummary();
             }
+            if (statsOpen)
+            {
+                DrawStats();
+            }
             if (magnet == null)
             {
                 return;
@@ -352,6 +390,40 @@ namespace MeteorMagnet
             foreach (var line in summary.lines)
             {
                 GUILayout.Label(line, text);
+            }
+            GUILayout.EndArea();
+            GUI.matrix = Matrix4x4.identity;
+        }
+
+        static void DrawStats()
+        {
+            var scale = Screen.height / 1080f;
+            GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+            var title = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold };
+            var text = new GUIStyle(GUI.skin.label) { fontSize = 19, wordWrap = true };
+            var button = new GUIStyle(GUI.skin.button) { fontSize = 18 };
+            const float w = 620f;
+            var lines = MeteorDisplay.Lines;
+            var h = 130f;
+            for (int i = 1; i < lines.Count; i++)
+            {
+                h += text.CalcHeight(new GUIContent(lines[i]), w - 40f) + 4f;
+            }
+            var rect = new Rect((Screen.width / scale - w) / 2f, (1080f - h) / 2f, w, h);
+            GUI.Box(rect, GUIContent.none);
+            GUI.Box(rect, GUIContent.none);
+            GUILayout.BeginArea(new Rect(rect.x + 20, rect.y + 14, w - 40, h - 24));
+            GUILayout.Label(lines.Count != 0 ? lines[0] : Localization.GetLocalizedString("MeteorMagnet_DisplayTitle"), title);
+            GUILayout.Space(6);
+            for (int i = 1; i < lines.Count; i++)
+            {
+                GUILayout.Label(lines[i], text);
+            }
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button(Localization.GetLocalizedString("MeteorMagnet_FilterClose"), button, GUILayout.Height(38)))
+            {
+                statsOpen = false;
+                Managers.GetManager<WindowsHandler>()?.CloseAllWindows();
             }
             GUILayout.EndArea();
             GUI.matrix = Matrix4x4.identity;

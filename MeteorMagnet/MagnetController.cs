@@ -1249,7 +1249,7 @@ namespace MeteorMagnet
                     + (ru ? " кВт, свободно " : " kW, free ") + FreeText(),
                 (ru ? "Ядер метеорита: " : "Meteor cores: ") + (MeteorStats.Resources.TryGetValue(Content.Core.id, out var cores) ? cores : 0),
             };
-            MeteorDisplay.UpdateAll(lines);
+            MeteorDisplay.Update(lines);
         }
 
         readonly List<(Vector3 position, Color color)> compassTags = [];

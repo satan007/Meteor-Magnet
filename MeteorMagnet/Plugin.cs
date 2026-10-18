@@ -104,7 +104,7 @@ namespace MeteorMagnet
             coreTradeValue = Config.Bind("Meteor Core", "TradeValue", -1, "Цена ядра в терратокенах для торговых ракет. -1 = в 20 раз дороже предмета, чью модель берёт ядро (иридий). 0 = не продаётся.");
             coreBaseItem = Config.Bind("Meteor Core", "BaseItem", "", "Id предмета игры, модель которого берёт ядро. Пусто = иридий (если нет — осмий, урановый стержень).");
             displayBaseScreen = Config.Bind("Display", "BaseScreen", "",
-                "Id игрового экрана, который копирует дисплей. Пусто = выбрать автоматически. Найденные экраны пишутся в лог.");
+                "Id игрового экрана, который копирует дисплей. Пусто = выбрать автоматически (экран, открывающий свой интерфейс, сначала орбитальный). Найденные экраны пишутся в лог.");
             roverUpgradeItems = Config.Bind("RoverUpgrades", "Items", "",
                 "Улучшения ровера определяются автоматически по английскому названию. Если какое-то не определилось, впишите его id вручную: "
                 + "Id=Тип:Тир через запятую, типы: Speed, Storage, Lights, Beacon, Oxygen, Equipment, Logistics, Jetpack. Пример: VehicleSpeed1=Speed:1,VehicleInventory2=Storage:2");
@@ -142,6 +142,7 @@ namespace MeteorMagnet
             var harmony = new Harmony("satan007.theplanetcrafter.meteormagnet");
             harmony.PatchAll(typeof(Plugin));
             harmony.PatchAll(typeof(Satellite));
+            harmony.PatchAll(typeof(MeteorDisplay));
 
             var go = new GameObject("MeteorMagnet_Controller");
             DontDestroyOnLoad(go);
@@ -421,20 +422,23 @@ namespace MeteorMagnet
             {
                 result.Add(configured);
             }
+            // Screens that open their own interface (the orbital information screen first), then any screen.
             var report = new List<string>();
+            var withUi = new List<string>();
+            var plain = new List<string>();
             foreach (var gd in groupsData)
             {
                 if (gd is not GroupDataConstructible gc || gc.id == null || !gc.id.StartsWith("Screen", StringComparison.Ordinal))
                 {
                     continue;
                 }
-                var texts = gc.associatedGameObject != null ? MeteorDisplay.TextComponents(gc.associatedGameObject).Count : 0;
-                report.Add(gc.id + " (" + texts + " texts)");
-                if (texts > 0)
-                {
-                    result.Add(gc.id);
-                }
+                var opensUi = MeteorDisplay.OpensUi(gc.associatedGameObject);
+                report.Add(gc.id + (opensUi ? " (opens an interface)" : ""));
+                (opensUi ? withUi : plain).Add(gc.id);
             }
+            withUi.Sort((a, b) => (b.Contains("System") ? 1 : 0).CompareTo(a.Contains("System") ? 1 : 0));
+            result.AddRange(withUi);
+            result.AddRange(plain);
             LogInfo("Screens found for the meteor display: " + (report.Count == 0 ? "none" : string.Join(", ", report)));
             return result.ToArray();
         }
