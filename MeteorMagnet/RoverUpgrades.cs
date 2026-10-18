@@ -15,8 +15,10 @@ namespace MeteorMagnet
         Lights,
         /// <summary>A light marks the loot pile so it is easy to find.</summary>
         Beacon,
-        /// <summary>Loot arrives right at capture instead of after the impact.</summary>
+        /// <summary>No effect yet.</summary>
         Oxygen,
+        /// <summary>Loot arrives right at capture instead of after the impact.</summary>
+        Jetpack,
         /// <summary>A few extra storage slots, like the rover's extra equipment slots.</summary>
         Equipment,
         /// <summary>Filtered-out and overflow loot goes to nearby containers.</summary>
@@ -46,6 +48,7 @@ namespace MeteorMagnet
 
         static readonly (string keyword, RoverUpgradeType type)[] keywords =
         [
+            ("jetpack", RoverUpgradeType.Jetpack),
             ("speed", RoverUpgradeType.Speed),
             ("inventory", RoverUpgradeType.Storage),
             ("storage", RoverUpgradeType.Storage),
@@ -132,7 +135,15 @@ namespace MeteorMagnet
                 {
                     continue;
                 }
-                var m = Regex.Match(kv.Value.Trim(), @"^Vehicle\s*-\s*(?:T(\d+)\s+)?(.+)$", RegexOptions.IgnoreCase);
+                var name = kv.Value.Trim();
+                var lowerName = name.ToLowerInvariant();
+                // "Jetpack For Vehicle" does not follow the "Vehicle - ..." pattern.
+                if (lowerName.Contains("jetpack") && lowerName.Contains("vehicle"))
+                {
+                    byName[kv.Key.Substring(prefix.Length)] = (RoverUpgradeType.Jetpack, 1);
+                    continue;
+                }
+                var m = Regex.Match(name, @"^Vehicle\s*-\s*(?:T(\d+)\s+)?(.+)$", RegexOptions.IgnoreCase);
                 if (!m.Success || !TryKeyword(m.Groups[2].Value.ToLowerInvariant(), out var type))
                 {
                     continue;

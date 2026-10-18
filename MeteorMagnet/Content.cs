@@ -36,8 +36,8 @@ namespace MeteorMagnet
         RadiusBoost,
         /// <summary>Every captured item has a chance to be duplicated.</summary>
         DuplicateChance,
-        /// <summary>Filtered-out and overflow items go to nearby containers instead of a pile.</summary>
-        ForwardToContainers,
+        /// <summary>Pulls loose meteor resources lying near the magnet into its storage.</summary>
+        Vortex,
         /// <summary>Every meteor gives at least one of each resource type it carries.</summary>
         EveryResourceType,
     }
@@ -62,6 +62,8 @@ namespace MeteorMagnet
         internal const float RadiusBoostFactor = 2f;
         internal const float DuplicateChance = 0.25f;
         internal const float ForwardRadius = 40f;
+        internal const float VortexRadius = 30f;
+        internal const float VortexInterval = 2f;
 
         /// <summary>What a barren meteor turns into with the Prime resonator.</summary>
         internal static readonly string[] BarrenLoot = ["Iron", "Titanium", "Magnesium", "Silicon", "Cobalt", "Aluminium"];
@@ -161,13 +163,13 @@ namespace MeteorMagnet
             new Resonator
             {
                 id = "MeteorResonatorAqualis", planet = "Aqualis",
-                effect = ResonatorEffect.ForwardToContainers,
+                effect = ResonatorEffect.Vortex,
                 recipe = "Phosphorus,Phosphorus,Phosphorus,Alloy",
                 color = new Color(0.2f, 0.5f, 1f),
-                nameRu = "Фосфорный ретранслятор",
-                nameEn = "Phosphorus Relay",
-                descRu = "Модуль для гравитационного захвата Mk2/Mk3. То, что не прошло фильтр или не влезло, отправляется в ближайшие сундуки в радиусе 40 м, а не падает кучкой.",
-                descEn = "Meteor Magnet Mk2/Mk3 module. Filtered-out and overflow resources go to the nearest containers within 40 m instead of a pile.",
+                nameRu = "Фосфорный водоворот",
+                nameEn = "Phosphorus Vortex",
+                descRu = "Модуль для гравитационного захвата Mk2/Mk3. Затягивает в хранилище ресурсы метеоритов, лежащие на земле в радиусе 30 м (с учётом фильтра) — например, кучки от Mk1 или старые обломки.",
+                descEn = "Meteor Magnet Mk2/Mk3 module. Pulls meteor resources lying on the ground within 30 m into storage (respecting the filter), e.g. Mk1 piles or old debris.",
             },
             new Resonator
             {

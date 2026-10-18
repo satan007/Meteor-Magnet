@@ -16,9 +16,6 @@ namespace MeteorMagnet
         static readonly AccessTools.FieldRef<WindowsHandler, DataConfig.UiType> fWindowsHandlerOpenedUi =
             AccessTools.FieldRefAccess<WindowsHandler, DataConfig.UiType>("_openedUi");
 
-        static readonly AccessTools.FieldRef<MeteoHandler, List<MeteoEventData>> fMeteoHandlerMeteoEvents =
-            AccessTools.FieldRefAccess<MeteoHandler, List<MeteoEventData>>("_meteoEvents");
-
         InputAction openAction;
         string boundKey;
 
@@ -125,25 +122,7 @@ namespace MeteorMagnet
         void CollectCandidates()
         {
             candidates.Clear();
-            var ids = new HashSet<string>();
-
-            var mh = Managers.GetManager<MeteoHandler>();
-            var events = mh != null ? fMeteoHandlerMeteoEvents(mh) : null;
-            foreach (var me in events ?? [])
-            {
-                var groups = me?.asteroidEventData?.asteroidGameObject?.GetComponent<Asteroid>()?.groupsSelected;
-                foreach (var gd in groups ?? [])
-                {
-                    if (gd != null)
-                    {
-                        ids.Add(gd.id);
-                    }
-                }
-            }
-            foreach (var id in Content.BarrenLoot)
-            {
-                ids.Add(id);
-            }
+            var ids = PlanetMeteors.ResourceIds();
             ids.UnionWith(selected);
 
             foreach (var id in ids)

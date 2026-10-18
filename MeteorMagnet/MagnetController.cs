@@ -58,6 +58,9 @@ namespace MeteorMagnet
         readonly List<Asteroid> done = [];
 
         float nextScan;
+        float nextVortex;
+        // Items already being moved by the vortex, so they are not added twice.
+        readonly HashSet<int> vortexPending = [];
 
         void Update()
         {
@@ -83,6 +86,71 @@ namespace MeteorMagnet
                 SteerCaptured();
             }
             CheckLanded();
+
+            if (Time.time >= nextVortex)
+            {
+                nextVortex = Time.time + Content.VortexInterval;
+                RunVortex();
+            }
+        }
+
+        /// <summary>
+        /// Phosphorus Vortex: magnets with it pull loose meteor resources lying nearby into their storage.
+        /// Only resources meteors can bring on this planet are touched, so tools and other dropped items stay put.
+        /// </summary>
+        void RunVortex()
+        {
+            List<Magnet> vortexMagnets = null;
+            foreach (var m in magnets)
+            {
+                if (m.inventory != null && m.effects.Contains(ResonatorEffect.Vortex) && !m.inventory.IsFull())
+                {
+                    (vortexMagnets ??= []).Add(m);
+                }
+            }
+            if (vortexMagnets == null)
+            {
+                return;
+            }
+
+            var resourceIds = PlanetMeteors.ResourceIds();
+            foreach (var grabable in FindObjectsByType<ActionGrabable>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (grabable == null || !grabable.GetCanGrab())
+                {
+                    continue;
+                }
+                var wo = grabable.GetComponentInParent<WorldObjectAssociated>()?.GetWorldObject();
+                var gid = wo?.GetGroup()?.GetId();
+                if (gid == null || !resourceIds.Contains(gid) || vortexPending.Contains(wo.GetId()))
+                {
+                    continue;
+                }
+                var pos = grabable.transform.position;
+                foreach (var m in vortexMagnets)
+                {
+                    if (Vector3.Distance(pos, m.position) > Content.VortexRadius)
+                    {
+                        continue;
+                    }
+                    if (m.filter.Count != 0 && !m.filter.Contains(gid))
+                    {
+                        continue;
+                    }
+                    if (m.inventory.IsFull())
+                    {
+                        continue;
+                    }
+                    var id = wo.GetId();
+                    vortexPending.Add(id);
+                    InventoriesHandler.Instance.AddWorldObjectToInventory(wo, m.inventory, grabbed: true, success =>
+                    {
+                        vortexPending.Remove(id);
+                        Plugin.Log("Vortex pulled " + gid + " #" + id + ": " + success);
+                    });
+                    break;
+                }
+            }
         }
 
         void RefreshMagnets()
@@ -247,7 +315,7 @@ namespace MeteorMagnet
                     loot = loot,
                     capturedAt = Time.time,
                 };
-                if (magnet.Upgrade(RoverUpgradeType.Oxygen) > 0)
+                if (magnet.Upgrade(RoverUpgradeType.Jetpack) > 0)
                 {
                     Deliver(capture);
                     capture.delivered = true;
@@ -466,8 +534,7 @@ namespace MeteorMagnet
                 // Re-fetch: the magnet may have been deconstructed while the meteor was falling.
                 inv = InventoriesHandler.Instance.GetInventoryById(c.magnet.wo.GetLinkedInventoryId());
             }
-            var forward = c.magnet.effects.Contains(ResonatorEffect.ForwardToContainers)
-                || c.magnet.Upgrade(RoverUpgradeType.Logistics) > 0
+            var forward = c.magnet.Upgrade(RoverUpgradeType.Logistics) > 0
                 ? FindNearbyContainers(c.magnet)
                 : null;
 
@@ -529,7 +596,7 @@ namespace MeteorMagnet
 
         /// <summary>
         /// Puts an item that does not go into the magnet's own storage into a nearby container
-        /// (Phosphorus Relay) or on the pile. Returns true if it went to a container.
+        /// (Vehicle - Logistics) or on the pile. Returns true if it went to a container.
         /// </summary>
         static bool Overflow(Group g, List<Inventory> forward, Vector3 pile)
         {

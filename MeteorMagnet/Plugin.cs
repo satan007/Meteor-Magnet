@@ -73,7 +73,7 @@ namespace MeteorMagnet
             }
             roverUpgradeItems = Config.Bind("RoverUpgrades", "Items", "",
                 "Улучшения ровера определяются автоматически по английскому названию. Если какое-то не определилось, впишите его id вручную: "
-                + "Id=Тип:Тир через запятую, типы: Speed, Storage, Lights, Beacon, Oxygen, Equipment, Logistics. Пример: VehicleSpeed1=Speed:1,VehicleInventory2=Storage:2");
+                + "Id=Тип:Тир через запятую, типы: Speed, Storage, Lights, Beacon, Oxygen, Equipment, Logistics, Jetpack. Пример: VehicleSpeed1=Speed:1,VehicleInventory2=Storage:2");
 
             foreach (var res in Content.Resonators)
             {
