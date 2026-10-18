@@ -1128,7 +1128,7 @@ namespace MeteorMagnet
             var inv = ModuleSlots.Get(wo, Content.Beacon.moduleSlots);
             beaconModules[wo.GetId()] = inv;
             var report = new List<string>();
-            foreach (var item in inv?.GetInsideWorldObjects() ?? [])
+            foreach (var item in (IEnumerable<WorldObject>)inv?.GetInsideWorldObjects() ?? [])
             {
                 var itemId = item?.GetGroup()?.GetId();
                 var res = Content.ResonatorOf(itemId);
