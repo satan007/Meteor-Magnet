@@ -420,9 +420,16 @@ namespace MeteorMagnet
                 }
                 if (Plugin.HasCrashed(asteroid))
                 {
-                    if (tracks.Remove(asteroid))
+                    if (tracks.TryGetValue(asteroid, out var lost))
                     {
-                        Plugin.Log("Meteor crashed while tracked (lock not done or no free magnet).");
+                        tracks.Remove(asteroid);
+                        var lostScanner = FindScanner(lost.scanner);
+                        var rareLost = asteroid.groupsSelected != null && asteroid.groupsSelected.Count != 0 && IsRare(asteroid);
+                        var lockNeeded = lostScanner != null ? lostScanner.LockTime * (rareLost ? Content.RareLockFactor : 1f) : 0f;
+                        var tracked = Time.time - lost.since;
+                        Plugin.Log("Meteor crashed while tracked: " + (tracked < lockNeeded ? "lock not done" : "no free magnet")
+                            + " (tracked " + tracked.ToString("0.0") + " s, lock " + lockNeeded.ToString("0.0") + " s"
+                            + ", resources=" + string.Join("/", (asteroid.groupsSelected ?? []).ConvertAll(g => g != null ? g.id : "?")) + ")");
                     }
                     continue;
                 }
