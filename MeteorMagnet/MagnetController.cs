@@ -98,6 +98,8 @@ namespace MeteorMagnet
             internal bool delivered;
             /// <summary>Bad failure: the meteor is thrown away, keeps its vanilla loot and gets no delivery.</summary>
             internal bool deflected;
+            /// <summary>Meteor position on the previous frame, to measure its speed.</summary>
+            internal Vector3? lastPosition;
         }
 
         /// <summary>A meteor a scanner is tracking: locking on, then waiting for a free magnet.</summary>
@@ -809,27 +811,48 @@ namespace MeteorMagnet
 
         void SteerCaptured()
         {
+            var dt = Time.deltaTime;
+            if (dt <= 0f)
+            {
+                return;
+            }
             foreach (var kv in captures)
             {
-                var speed = 1f + RoverUpgrades.SpeedTurnRatePerTier * kv.Value.magnet.Upgrade(RoverUpgradeType.Speed);
-                if (kv.Value.deflected)
-                {
-                    speed = Content.DeflectTurnFactor;
-                }
-                var maxDeg = Plugin.PullTurnRate * speed * Time.deltaTime;
+                var c = kv.Value;
                 var asteroid = kv.Key;
                 if (asteroid == null || Plugin.HasCrashed(asteroid))
                 {
                     continue;
                 }
                 var t = asteroid.transform;
-                var dir = kv.Value.target - t.position;
-                if (dir.sqrMagnitude < 1f)
+                var pos = t.position;
+                var dir = c.target - pos;
+                var dist = dir.magnitude;
+                var speed = c.lastPosition.HasValue ? (pos - c.lastPosition.Value).magnitude / dt : 0f;
+                c.lastPosition = pos;
+                if (dist < 1f)
                 {
                     continue;
                 }
-                var wanted = Quaternion.LookRotation(dir.normalized);
-                t.rotation = Quaternion.RotateTowards(t.rotation, wanted, maxDeg);
+
+                var wanted = Quaternion.LookRotation(dir / dist);
+                // Close to the target there is no room left to curve in: aim straight at it,
+                // otherwise a fast meteor overshoots and keeps circling around the target.
+                if (dist < Content.SnapDistance)
+                {
+                    t.rotation = wanted;
+                }
+                else
+                {
+                    var factor = c.deflected
+                        ? Content.DeflectTurnFactor
+                        : 1f + RoverUpgrades.SpeedTurnRatePerTier * c.magnet.Upgrade(RoverUpgradeType.Speed);
+                    var baseRate = Plugin.PullTurnRate * factor;
+                    // Turn fast enough to close the remaining angle in half the time left to reach the target.
+                    var angle = Quaternion.Angle(t.rotation, wanted);
+                    var needed = speed > 0f ? 2f * angle * speed / dist : 0f;
+                    t.rotation = Quaternion.RotateTowards(t.rotation, wanted, Mathf.Max(baseRate, needed) * dt);
+                }
 
                 if (asteroid.TryGetComponent<Rigidbody>(out var rb) && !rb.isKinematic)
                 {

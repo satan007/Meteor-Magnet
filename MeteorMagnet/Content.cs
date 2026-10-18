@@ -132,6 +132,8 @@ namespace MeteorMagnet
         internal const float DeflectMaxDistance = 500f;
         /// <summary>How much faster a thrown-away meteor turns than a captured one.</summary>
         internal const float DeflectTurnFactor = 3f;
+        /// <summary>Within this distance a pulled meteor aims straight at its target.</summary>
+        internal const float SnapDistance = 40f;
         internal const float DuplicateChance = 0.25f;
         internal const float ForwardRadius = 40f;
         internal const float VortexRadius = 30f;
