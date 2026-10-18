@@ -1724,7 +1724,7 @@ namespace MeteorMagnet
                 }
             }
             Plugin.Log("Loot roll for #" + magnet.wo.GetId() + ": base " + baseCount.ToString("0.#") + " x" + mult.ToString("0.##")
-                + (mult != Plugin.LootMultiplier ? " (Humble x" + Content.LootBonusFactor + ")" : "") + " = " + total
+                + (magnet.effects.Contains(ResonatorEffect.LootBonus) ? " (Humble x" + magnet.Weaken(Content.LootBonusFactor).ToString("0.##") + ")" : "") + " = " + total
                 + (extraTypes > 0 ? ", +" + extraTypes + " for every type (Skeo)" : "")
                 + (extraDuplicates > 0 ? ", +" + extraDuplicates + " duplicated (Toxicity)" : "")
                 + " -> " + result.Count + " items");
@@ -1774,14 +1774,28 @@ namespace MeteorMagnet
                     }
                 }
 
-                // Too fast for the game's own impact check: it went through the ground this frame.
-                // Put it back on the surface once so the impact registers.
+                // Too fast for the game's own impact check: it went through the ground this frame and will only
+                // crash deep below. Show the impact where it hit the surface and hide the meteor from then on.
                 if (prev.HasValue && !c.unTunneled && TryGroundBetween(prev.Value, pos, out var surface))
                 {
                     c.unTunneled = true;
-                    t.position = surface + (prev.Value - surface).normalized * 0.5f;
-                    Plugin.Log("Meteor passed through the ground at " + surface.ToString() + " (speed " + speed.ToString("0")
-                        + " m/s), put back on the surface");
+                    CaptureEffects.Flash(surface + Vector3.up * 2f, c.deflected ? Color.red : c.magnet.tier.color, 8f, 40f);
+                    var hidden = 0;
+                    foreach (var r in asteroid.GetComponentsInChildren<Renderer>())
+                    {
+                        if (r.enabled)
+                        {
+                            r.enabled = false;
+                            hidden++;
+                        }
+                    }
+                    Plugin.Log("Meteor hit the ground at " + surface + " (speed " + speed.ToString("0")
+                        + " m/s): impact shown there, meteor hidden (" + hidden + " renderers) until the game registers the crash");
+                    if (!loggedAsteroidAnatomy)
+                    {
+                        loggedAsteroidAnatomy = true;
+                        LogAsteroidAnatomy(asteroid);
+                    }
                     continue;
                 }
                 if (dist < 1f)
@@ -1819,6 +1833,52 @@ namespace MeteorMagnet
                 {
                     rb.velocity = t.forward * rb.velocity.magnitude;
                 }
+            }
+        }
+
+        static bool loggedAsteroidAnatomy;
+
+        /// <summary>
+        /// Diagnostics, once per session: the meteor's fields, methods, physics components and colliders,
+        /// to find out how the game detects the impact.
+        /// </summary>
+        static void LogAsteroidAnatomy(Asteroid asteroid)
+        {
+            try
+            {
+                var lines = new List<string>();
+                const System.Reflection.BindingFlags all = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.DeclaredOnly;
+                foreach (var f in typeof(Asteroid).GetFields(all))
+                {
+                    object v;
+                    try
+                    {
+                        v = f.GetValue(asteroid);
+                    }
+                    catch
+                    {
+                        v = "?";
+                    }
+                    lines.Add("  field " + f.FieldType.Name + " " + f.Name + " = " + v);
+                }
+                foreach (var m in typeof(Asteroid).GetMethods(all))
+                {
+                    lines.Add("  method " + m.ReturnType.Name + " " + m.Name + "(" + string.Join(", ",
+                        Array.ConvertAll(m.GetParameters(), p => p.ParameterType.Name)) + ")");
+                }
+                foreach (var comp in asteroid.GetComponentsInChildren<Component>(true))
+                {
+                    var extra = comp is Rigidbody rb ? " kinematic=" + rb.isKinematic + " velocity=" + rb.velocity + " detection=" + rb.collisionDetectionMode
+                        : comp is Collider col ? " trigger=" + col.isTrigger + " enabled=" + col.enabled
+                        : "";
+                    lines.Add("  component " + comp.GetType().Name + " on " + comp.gameObject.name + extra);
+                }
+                Plugin.Log("Asteroid anatomy (base type " + typeof(Asteroid).BaseType?.Name + "):\n" + string.Join("\n", lines));
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogWarning("Asteroid anatomy failed: " + ex.Message);
             }
         }
 
