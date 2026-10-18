@@ -29,6 +29,10 @@ namespace MeteorMagnet
             /// <summary>Highest tier of each rover upgrade inside the storage.</summary>
             internal readonly Dictionary<RoverUpgradeType, int> upgrades = [];
 
+            /// <summary>Power draw of this building, the power saver included.</summary>
+            internal float Draw => Plugin.EnergyUse(wo.GetGroup().GetId())
+                * (effects.Contains(ResonatorEffect.PowerSaver) ? Content.PowerSaverFactor : 1f);
+
             internal int Upgrade(RoverUpgradeType t) => upgrades.TryGetValue(t, out var v) ? v : 0;
 
             /// <summary>The building's separate module slots (see <see cref="ModuleSlots"/>).</summary>
@@ -57,7 +61,7 @@ namespace MeteorMagnet
                     if (res != null)
                     {
                         // A module only works in the building it is made for.
-                        if (res.forScanner != isScanner)
+                        if (!res.forBoth && res.forScanner != isScanner)
                         {
                             moduleReport.Add(itemId + ": IGNORED, works only in a " + (res.forScanner ? "scanner" : "magnet"));
                         }
@@ -102,6 +106,8 @@ namespace MeteorMagnet
             internal readonly HashSet<string> filter = [];
             /// <summary>Meteors this magnet is pulling in right now.</summary>
             internal int busy;
+
+            internal int CaptureSlots => tier.captureSlots + (effects.Contains(ResonatorEffect.ExtraCaptureSlot) ? 1 : 0);
         }
 
         class Scanner : Building
@@ -126,6 +132,7 @@ namespace MeteorMagnet
             internal float LinkFactor => Upgrade(RoverUpgradeType.Beacon) > 0 ? RoverUpgrades.BeaconLinkFactor : 1f;
 
             internal float LockTime => tier.lockTime
+                * (effects.Contains(ResonatorEffect.FasterLock) ? Content.FasterLockFactor : 1f)
                 * (planetWide && effects.Contains(ResonatorEffect.RadiusBoost) ? Content.LensLockFactor : 1f);
 
             internal int TrackSlots => tier.trackSlots + RoverUpgrades.EquipmentTargets(Upgrade(RoverUpgradeType.Equipment));
@@ -174,6 +181,12 @@ namespace MeteorMagnet
         readonly List<Magnet> magnets = [];
         readonly List<Scanner> scanners = [];
         readonly List<(WorldObject wo, Vector3 position)> relays = [];
+        readonly List<WorldObject> beacons = [];
+        // Slipped meteors, followed to the ground to mark where they land (last seen position).
+        readonly Dictionary<Asteroid, Vector3> slippedWatch = [];
+        // When the beacons call the next shower (NaN = no beacon yet).
+        float nextShower = float.NaN;
+        int displayCount;
         readonly Dictionary<int, Light> glows = [];
         // Vanilla container sizes by group id, used as the base size of Mk2/Mk3 storage.
         readonly Dictionary<string, int> baseSizes = [];
@@ -216,6 +229,9 @@ namespace MeteorMagnet
                 meteorLines.Clear();
                 loggedUnseen.Clear();
                 MeteorDisplay.Reset();
+                MeteorMarkers.Clear();
+                slippedWatch.Clear();
+                nextShower = float.NaN;
                 captures.Clear();
                 tracks.Clear();
                 seen.Clear();
@@ -231,8 +247,10 @@ namespace MeteorMagnet
                 nextScan = Time.time + ScanInterval;
                 RefreshBuildings();
                 BuildNetworks();
+                UpdatePower();
                 ScanForMeteors();
                 UpdateDisplays();
+                RunBeacons();
             }
 
             if (Plugin.PullMeteors)
@@ -240,6 +258,7 @@ namespace MeteorMagnet
                 SteerCaptured();
             }
             CheckLanded();
+            WatchSlipped();
             DrawMeteorLines();
 
             if (Time.time >= nextVortex)
@@ -313,6 +332,8 @@ namespace MeteorMagnet
             magnets.Clear();
             scanners.Clear();
             relays.Clear();
+            beacons.Clear();
+            displayCount = 0;
             var planetHash = CurrentPlanetHash();
             foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
             {
@@ -320,6 +341,22 @@ namespace MeteorMagnet
                 var tier = Content.TierOf(gid);
                 var scannerTier = Content.ScannerOf(gid);
                 var relay = Content.IsRelay(gid);
+                if (gid == Content.Display.id || gid == Content.Beacon.id)
+                {
+                    if (wo.GetIsPlaced() && (planetHash == 0 || wo.GetPlanetHash() == planetHash))
+                    {
+                        if (gid == Content.Beacon.id)
+                        {
+                            beacons.Add(wo);
+                            Decorate(wo, Content.Beacon.color, Content.Beacon.level, 0);
+                        }
+                        else
+                        {
+                            displayCount++;
+                        }
+                    }
+                    continue;
+                }
                 if (tier == null && scannerTier == null && !relay)
                 {
                     RememberBaseSize(wo, gid);
@@ -531,7 +568,7 @@ namespace MeteorMagnet
             else if (b is Magnet m)
             {
                 var stabilized = m.effects.Contains(ResonatorEffect.Stabilizer);
-                lines.Add("  => holds " + m.tier.captureSlots + " meteors, fail chance " + (FailChance(m, false) * 100f).ToString("0") + "% ("
+                lines.Add("  => holds " + m.CaptureSlots + " meteors, fail chance " + (FailChance(m, false) * 100f).ToString("0") + "% ("
                     + (FailChance(m, true) * 100f).ToString("0") + "% for rare)" + (stabilized ? ", halved by the field stabilizer" : ""));
                 var loot = new List<string>();
                 if (m.effects.Contains(ResonatorEffect.LootBonus))
@@ -557,6 +594,8 @@ namespace MeteorMagnet
                     + (m.Upgrade(RoverUpgradeType.Jetpack) > 0 ? ", loot delivered at capture" : "")
                     + (m.Upgrade(RoverUpgradeType.Lights) > 0 ? ", pile light" : ""));
             }
+            lines.Add("  => power draw " + b.Draw.ToString("0.#") + " kW"
+                + (b.effects.Contains(ResonatorEffect.PowerSaver) ? " (power saver x" + Content.PowerSaverFactor + ")" : ""));
             var text = string.Join("\n", lines);
             var id = b.wo.GetId();
             if (!loggedModules.TryGetValue(id, out var last) || last != text)
@@ -613,6 +652,17 @@ namespace MeteorMagnet
 
         bool powerOk = true;
 
+        void UpdatePower()
+        {
+            var hadPower = powerOk;
+            powerOk = Plugin.PowerOk(NetworkDemand(), out var powerDetails);
+            if (!powerOk && hadPower)
+            {
+                Plugin.Log("No power for the meteor network (" + powerDetails + "), dropping " + tracks.Count + " tracked meteors");
+                NotifyText("MeteorMagnet_NoPower", DataConfig.UiInformationsType.OutInventory);
+            }
+        }
+
         void ScanForMeteors()
         {
             if (scanners.Count == 0 || magnets.Count == 0)
@@ -620,15 +670,8 @@ namespace MeteorMagnet
                 tracks.Clear();
                 return;
             }
-            var hadPower = powerOk;
-            powerOk = Plugin.PowerOk(out var powerDetails);
             if (!powerOk)
             {
-                if (hadPower)
-                {
-                    Plugin.Log("No power for the meteor network (" + powerDetails + "), dropping " + tracks.Count + " tracked meteors");
-                    NotifyText("MeteorMagnet_NoPower", DataConfig.UiInformationsType.OutInventory);
-                }
                 tracks.Clear();
                 return;
             }
@@ -704,7 +747,7 @@ namespace MeteorMagnet
                     Plugin.Log(Describe(scanner) + " locked on " + Describe(asteroid) + " after " + (Time.time - track.since).ToString("0.0")
                         + " s (needed " + lockTime.ToString("0.0") + " s), meteor at " + asteroid.transform.position);
                 }
-                var magnet = PickMagnet(scanner, landing);
+                var magnet = PickMagnet(scanner, asteroid, landing, out var pickedBecause);
                 if (magnet == null)
                 {
                     if (!track.waitLogged)
@@ -723,7 +766,7 @@ namespace MeteorMagnet
                 var failRoll = UnityEngine.Random.value;
                 Plugin.Log(Describe(scanner) + " hands " + Describe(asteroid) + " to " + Describe(magnet)
                     + " (" + HorizontalDistance(magnet.position, landing).ToString("0") + " m from the predicted landing, slots "
-                    + magnet.busy + "/" + magnet.tier.captureSlots + "): fail chance " + (failChance * 100f).ToString("0") + "%"
+                    + magnet.busy + "/" + magnet.CaptureSlots + ", picked: " + pickedBecause + "): fail chance " + (failChance * 100f).ToString("0") + "%"
                     + (rare ? " incl. rare +" + (Content.RareFailBonus * 100f).ToString("0") + "%" : "")
                     + (magnet.effects.Contains(ResonatorEffect.Stabilizer) ? " x" + Content.StabilizerFailFactor + " stabilizer" : "")
                     + ", roll " + (failRoll * 100f).ToString("0") + " -> " + (failRoll < failChance ? "FAILED" : "ok"));
@@ -742,11 +785,21 @@ namespace MeteorMagnet
                             + (Content.BadFailShare * 100f).ToString("0") + "), " + Describe(asteroid) + " keeps its course to " + landing);
                         NotifyText("MeteorMagnet_Slipped", DataConfig.UiInformationsType.OutInventory);
                         MeteorStats.AddSlipped();
+                        slippedWatch[asteroid] = asteroid.transform.position;
                     }
                     continue;
                 }
 
                 var loot = barren ? RollBarrenLoot(asteroid, magnet) : RollLoot(asteroid, magnet);
+                var coreRoll = UnityEngine.Random.value;
+                var core = GroupsHandler.GetGroupViaId(Content.Core.id);
+                if (core != null && loot.Count != 0 && coreRoll < Plugin.CoreDropChance)
+                {
+                    loot.Add(core);
+                    NotifyText("MeteorMagnet_CoreFound", DataConfig.UiInformationsType.InInventory);
+                }
+                Plugin.Log("Meteor core roll " + (coreRoll * 100f).ToString("0.0") + " vs " + (Plugin.CoreDropChance * 100f).ToString("0.0")
+                    + "% -> " + (core == null ? "core item missing" : coreRoll < Plugin.CoreDropChance ? "CORE FOUND" : "no core"));
                 if (loot.Count == 0)
                 {
                     magnet.busy--;
@@ -907,7 +960,7 @@ namespace MeteorMagnet
 
         static string DescribeNetwork(Scanner s)
         {
-            var parts = s.network.ConvertAll(m => Describe(m) + " " + m.busy + "/" + m.tier.captureSlots + " busy");
+            var parts = s.network.ConvertAll(m => Describe(m) + " " + m.busy + "/" + m.CaptureSlots + " busy");
             return parts.Count == 0 ? "no magnets linked to " + Describe(s) : string.Join(", ", parts);
         }
 
@@ -947,6 +1000,106 @@ namespace MeteorMagnet
             meteorLines.End();
         }
 
+        /// <summary>Follows slipped meteors down and marks where they land.</summary>
+        void WatchSlipped()
+        {
+            if (slippedWatch.Count == 0)
+            {
+                return;
+            }
+            var landed = new List<Asteroid>();
+            var moved = new List<Asteroid>();
+            foreach (var kv in slippedWatch)
+            {
+                if (kv.Key == null || Plugin.HasCrashed(kv.Key))
+                {
+                    var pos = kv.Key != null ? kv.Key.transform.position : kv.Value;
+                    MeteorMarkers.Add(pos, new Color(1f, 0.75f, 0.2f), "slipped meteor " + (kv.Key != null ? "landed" : "disappeared"));
+                    landed.Add(kv.Key);
+                }
+                else
+                {
+                    moved.Add(kv.Key);
+                }
+            }
+            foreach (var a in moved)
+            {
+                slippedWatch[a] = a.transform.position;
+            }
+            foreach (var a in landed)
+            {
+                slippedWatch.Remove(a);
+            }
+        }
+
+        /// <summary>
+        /// Meteor beacons call a shower every IntervalMinutes while the network has power.
+        /// The timer starts when the first beacon is built; a busy sky postpones the shower by a minute.
+        /// </summary>
+        void RunBeacons()
+        {
+            if (beacons.Count == 0)
+            {
+                if (!float.IsNaN(nextShower))
+                {
+                    Plugin.Log("No meteor beacons left, shower timer stopped");
+                }
+                nextShower = float.NaN;
+                return;
+            }
+            if (float.IsNaN(nextShower))
+            {
+                nextShower = Time.time + Plugin.BeaconIntervalSeconds;
+                Plugin.Log(beacons.Count + " meteor beacon(s): next shower in " + (Plugin.BeaconIntervalSeconds / 60f).ToString("0.#") + " min");
+                return;
+            }
+            if (Time.time < nextShower)
+            {
+                return;
+            }
+            if (!powerOk)
+            {
+                nextShower = Time.time + 60f;
+                Plugin.Log("Meteor beacon: no power, shower postponed by a minute");
+                return;
+            }
+            if (MeteorBeacon.TrySummon(out var result))
+            {
+                nextShower = Time.time + Plugin.BeaconIntervalSeconds;
+                NotifyText("MeteorMagnet_BeaconShower", DataConfig.UiInformationsType.OutInventory);
+                Plugin.Log("Meteor beacon: " + result + ", next in " + (Plugin.BeaconIntervalSeconds / 60f).ToString("0.#") + " min");
+            }
+            else
+            {
+                nextShower = Time.time + 60f;
+                Plugin.Log("Meteor beacon: " + result + ", retry in a minute");
+            }
+        }
+
+        string FreeText()
+        {
+            var free = Plugin.FreePower();
+            return float.IsInfinity(free) ? "?" : (free - NetworkDemand()).ToString("0.#");
+        }
+
+        /// <summary>Power the whole meteor network draws, modules included.</summary>
+        float NetworkDemand()
+        {
+            var demand = 0f;
+            foreach (var s in scanners)
+            {
+                demand += s.Draw;
+            }
+            foreach (var m in magnets)
+            {
+                demand += m.Draw;
+            }
+            demand += relays.Count * Plugin.EnergyUse(Content.Relay.id);
+            demand += displayCount * Plugin.EnergyUse(Content.Display.id);
+            demand += beacons.Count * Plugin.EnergyUse(Content.Beacon.id);
+            return demand;
+        }
+
         /// <summary>Statistics for the wall displays; also saves them into the world.</summary>
         void UpdateDisplays()
         {
@@ -961,7 +1114,7 @@ namespace MeteorMagnet
             foreach (var m in magnets)
             {
                 pulling += m.busy;
-                pullSlots += m.tier.captureSlots;
+                pullSlots += m.CaptureSlots;
             }
             var ru = Localization.GetLocalizedString("MeteorMagnet_DisplayTitle") != "Meteor network";
             var lines = new List<string>
@@ -974,7 +1127,10 @@ namespace MeteorMagnet
                 MeteorStats.Top(3),
                 (ru ? "Сканеры: " : "Scanners: ") + scanners.Count + (ru ? ", ведут " : ", tracking ") + tracking + "/" + trackSlots,
                 (ru ? "Захваты: " : "Magnets: ") + magnets.Count + (ru ? ", тянут " : ", pulling ") + pulling + "/" + pullSlots,
-                (ru ? "Энергия: " : "Power: ") + (powerOk ? (ru ? "есть" : "ok") : (ru ? "НЕ ХВАТАЕТ" : "NOT ENOUGH")),
+                (ru ? "Энергия: " : "Power: ") + (powerOk ? (ru ? "есть" : "ok") : (ru ? "НЕ ХВАТАЕТ" : "NOT ENOUGH"))
+                    + (ru ? ", сеть " : ", network ") + NetworkDemand().ToString("0.#")
+                    + (ru ? " кВт, свободно " : " kW, free ") + FreeText(),
+                (ru ? "Ядер метеорита: " : "Meteor cores: ") + (MeteorStats.Resources.TryGetValue(Content.Core.id, out var cores) ? cores : 0),
             };
             MeteorDisplay.UpdateAll(lines);
         }
@@ -1055,24 +1211,54 @@ namespace MeteorMagnet
         /// The magnet in the scanner's link area with a free slot, nearest to where the meteor would land.
         /// A magnet with full storage still takes meteors; the overflow is dropped next to it.
         /// </summary>
-        static Magnet PickMagnet(Scanner scanner, Vector3 landing)
+        static Magnet PickMagnet(Scanner scanner, Asteroid asteroid, Vector3 landing, out string why)
         {
             Magnet best = null;
+            var bestRank = int.MaxValue;
             var bestDist = float.MaxValue;
             foreach (var m in scanner.network)
             {
-                if (m.busy >= m.tier.captureSlots)
+                if (m.busy >= m.CaptureSlots)
                 {
                     continue;
                 }
+                var rank = Plugin.RouteByFilter ? FilterRank(m, asteroid) : 0;
                 var dist = Vector3.Distance(m.position, landing);
-                if (dist < bestDist)
+                if (rank < bestRank || (rank == bestRank && dist < bestDist))
                 {
+                    bestRank = rank;
                     bestDist = dist;
                     best = m;
                 }
             }
+            why = bestRank switch
+            {
+                0 when Plugin.RouteByFilter => "its filter wants this meteor",
+                1 => "no filter, stores everything",
+                2 => "nearest free one, its filter does not want this meteor",
+                _ => "nearest free one",
+            };
             return best;
+        }
+
+        /// <summary>
+        /// 0: the magnet's filter wants a resource of the meteor; 1: no filter (or no storage, a Mk1 pile);
+        /// 2: the filter wants none of it, the loot would be dropped next to the magnet.
+        /// </summary>
+        static int FilterRank(Magnet m, Asteroid asteroid)
+        {
+            if (!m.tier.hasStorage || m.filter.Count == 0)
+            {
+                return 1;
+            }
+            foreach (var gd in asteroid.groupsSelected ?? [])
+            {
+                if (gd != null && m.filter.Contains(gd.id))
+                {
+                    return 0;
+                }
+            }
+            return 2;
         }
 
         /// <summary>
@@ -1447,6 +1633,10 @@ namespace MeteorMagnet
                         + " after " + (Time.time - kv.Value.capturedAt).ToString("0.0") + " s"
                         + (gone ? "" : " at " + asteroid.transform.position) + (kv.Value.deflected ? ", thrown away" : ""));
                     done.Add(asteroid);
+                    if (kv.Value.deflected && !gone)
+                    {
+                        MeteorMarkers.Add(asteroid.transform.position, new Color(1f, 0.3f, 0.2f), "thrown-away " + Describe(asteroid) + " landed");
+                    }
                     if (crashed)
                     {
                         CaptureEffects.Flash(asteroid.transform.position + Vector3.up * 2f,
@@ -1483,7 +1673,8 @@ namespace MeteorMagnet
             }
             foreach (var g in c.loot)
             {
-                var passes = c.magnet.filter.Count == 0 || c.magnet.filter.Contains(g.GetId());
+                // The meteor core is always kept, whatever the filter says.
+                var passes = c.magnet.filter.Count == 0 || c.magnet.filter.Contains(g.GetId()) || g.GetId() == Content.Core.id;
                 var isFull = inv != null && inv.IsFull();
                 if (inv != null && !passes)
                 {

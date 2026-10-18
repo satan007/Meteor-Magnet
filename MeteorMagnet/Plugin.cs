@@ -41,6 +41,11 @@ namespace MeteorMagnet
         static ConfigEntry<bool> captureEffects;
         static ConfigEntry<bool> requirePower;
         static ConfigEntry<string> displayBaseScreen;
+        static ConfigEntry<float> beaconInterval;
+        static ConfigEntry<float> coreDropChance;
+        static ConfigEntry<string> coreBaseItem;
+        static ConfigEntry<float> markerSeconds;
+        static ConfigEntry<bool> routeByFilter;
         static ConfigEntry<bool> showNotification;
         static ConfigEntry<bool> debugLog;
         static ConfigEntry<string> filterKey;
@@ -71,6 +76,7 @@ namespace MeteorMagnet
             showNotification = Config.Bind("Capture", "ShowNotification", true, "Показывать сообщение при захвате метеорита.");
             filterKey = Config.Bind("Capture", "FilterKey", "<Keyboard>/n", "Клавиша окна фильтра: наведитесь на захват Mk2/Mk3 (что идёт в хранилище) или на сканер (какие метеориты он ведёт) и нажмите.");
             moduleKey = Config.Bind("Capture", "ModuleKey", "<Keyboard>/k", "Клавиша ячеек модулей: наведитесь на сканер или захват и нажмите.");
+            routeByFilter = Config.Bind("Capture", "RouteByFilter", true, "Сканер отдаёт метеорит в первую очередь захвату, у которого в фильтре есть его ресурсы, потом захватам без фильтра, потом остальным.");
             requirePower = Config.Bind("Energy", "RequirePower", true, "Метеорная сеть работает, только пока на базе хватает энергии. Потребление каждой постройки задаётся в её разделе (EnergyUse).");
 
             pullMeteors = Config.Bind("Visual", "PullMeteors", true, "Визуально притягивать метеорит к устройству (он упадёт рядом с ним). Если выключить, метеорит упадёт где падал, но пустым.");
@@ -81,6 +87,7 @@ namespace MeteorMagnet
             showSignalLines = Config.Bind("Visual", "ShowSignalLines", true, "Показывать линии сигнала: сканер → реле → захват.");
             signalLineWidth = Config.Bind("Visual", "SignalLineWidth", 0.03f, "Толщина линии сигнала в метрах (к концам линия сужается вдвое).");
             signalLineOpacity = Config.Bind("Visual", "SignalLineOpacity", 0.4f, "Непрозрачность линии сигнала: 0 — невидима, 1 — сплошная.");
+            markerSeconds = Config.Bind("Visual", "MarkerSeconds", Content.MarkerLifetime, "Сколько секунд над упавшим непойманным (сорвавшимся или отброшенным) метеоритом висит метка: луч и значок вверху экрана. 0 = не показывать.");
             captureEffects = Config.Bind("Visual", "CaptureEffects", true, "Вспышка и след при захвате метеорита, вспышка при его падении.");
             showMeteorLines = Config.Bind("Visual", "ShowMeteorLines", true, "Отладка: лучи от сканера к метеориту, который он ведёт (бледный — идёт захват цели, яркий — цель захвачена), и от захвата к метеориту, который он тянет (красный — метеорит отбрасывается).");
 
@@ -90,6 +97,9 @@ namespace MeteorMagnet
                 unlocks[def.id] = Config.Bind(def.ConfigSection, "UnlockAtTerraformation", def.unlockTi, "Индекс терраформации (Ti), при котором открывается эта постройка. 0 = доступно сразу.");
                 energyUse[def.id] = Config.Bind(def.ConfigSection, "EnergyUse", def.energy, "Потребление энергии постройкой (в единицах игры, кВт). Применяется после перезапуска игры.");
             }
+            beaconInterval = Config.Bind(Content.Beacon.ConfigSection, "IntervalMinutes", Content.Beacon.intervalMinutes, "Как часто маяк вызывает метеоритный дождь, минут.");
+            coreDropChance = Config.Bind("Meteor Core", "DropChance", Content.Core.dropChance, "Шанс, что пойманный метеорит оставит ядро (0.03 = 3%).");
+            coreBaseItem = Config.Bind("Meteor Core", "BaseItem", "", "Id предмета игры, модель которого берёт ядро. Пусто = иридий (если нет — осмий, урановый стержень).");
             displayBaseScreen = Config.Bind("Display", "BaseScreen", "",
                 "Id игрового экрана, который копирует дисплей. Пусто = выбрать автоматически. Найденные экраны пишутся в лог.");
             roverUpgradeItems = Config.Bind("RoverUpgrades", "Items", "",
@@ -125,6 +135,7 @@ namespace MeteorMagnet
             go.hideFlags = HideFlags.HideAndDontSave;
             go.AddComponent<MagnetController>();
             go.AddComponent<FilterWindow>();
+            go.AddComponent<MeteorMarkers>();
 
             Logger.LogInfo("Meteor Magnet loaded.");
         }
@@ -142,32 +153,43 @@ namespace MeteorMagnet
         internal static float SignalLineOpacity => Mathf.Clamp01(signalLineOpacity.Value);
         internal static bool ShowMeteorLines => showMeteorLines.Value;
         internal static bool CaptureEffects => captureEffects.Value;
+        internal static float BeaconIntervalSeconds => Mathf.Max(1f, beaconInterval.Value) * 60f;
+        internal static float CoreDropChance => Mathf.Clamp01(coreDropChance.Value);
+        internal static float MarkerSeconds => markerSeconds.Value;
+        internal static bool RouteByFilter => routeByFilter.Value;
+        internal static float EnergyUse(string id) => energyUse.TryGetValue(id, out var e) ? Mathf.Max(0f, e.Value) : 0f;
         internal static bool ShowNotification => showNotification.Value;
         internal static string FilterKey => filterKey.Value.Contains("<") ? filterKey.Value : "<Keyboard>/" + filterKey.Value;
         internal static string ModuleKey => moduleKey.Value.Contains("<") ? moduleKey.Value : "<Keyboard>/" + moduleKey.Value;
 
         static bool lastPowerOk = true;
 
+        /// <summary>Free power of the base: production minus the game's own demand, before our network.</summary>
+        internal static float FreePower()
+        {
+            var unit = Managers.GetManager<WorldUnitsHandler>()?.GetUnit(DataConfig.WorldUnitType.Energy);
+            return unit == null ? float.PositiveInfinity : (float)(unit.GetIncreaseValuePersSec() + unit.GetDecreaseValuePersSec());
+        }
+
         /// <summary>
-        /// Whether the base has enough power: the game's energy production covers the demand,
-        /// our buildings' draw included. Changes are logged.
+        /// Whether the base has enough power for the meteor network. The game's energy units count only vanilla
+        /// buildings (ours draw nothing there, so modules can lower the draw per building); the network's own
+        /// demand is added here. Changes are logged.
         /// </summary>
-        internal static bool PowerOk(out string details)
+        internal static bool PowerOk(float networkDemand, out string details)
         {
             details = "";
             if (!requirePower.Value)
             {
                 return true;
             }
-            var unit = Managers.GetManager<WorldUnitsHandler>()?.GetUnit(DataConfig.WorldUnitType.Energy);
-            if (unit == null)
+            var free = FreePower();
+            if (float.IsInfinity(free))
             {
                 return true;
             }
-            var production = unit.GetIncreaseValuePersSec();
-            var demand = -unit.GetDecreaseValuePersSec();
-            var ok = production - demand >= 0f;
-            details = "production " + production.ToString("0.##") + ", demand " + demand.ToString("0.##");
+            var ok = free - networkDemand >= 0f;
+            details = "free power of the base " + free.ToString("0.##") + ", network demand " + networkDemand.ToString("0.##");
             if (ok != lastPowerOk)
             {
                 lastPowerOk = ok;
@@ -239,6 +261,9 @@ namespace MeteorMagnet
 
             var existing = ___groupsData.Where(g => g != null).Select(g => g.id).ToHashSet();
 
+            // First: recipes of the beacon and the advanced modules use it.
+            RegisterCore(___groupsData, existing);
+
             foreach (var def in Content.Buildings)
             {
                 if (existing.Contains(def.id))
@@ -268,7 +293,7 @@ namespace MeteorMagnet
                 var building = Instantiate(baseGroup);
                 SetupClone(building, def.id, ___groupsData);
                 building.unlockingValue = unlocks[def.id].Value;
-                SetEnergyUse(building, energyUse[def.id].Value);
+                ClearEnergy(building);
                 ___groupsData.Add(building);
                 Log("Registered building " + def.id + " (base " + baseGroup.id + ")");
             }
@@ -295,14 +320,51 @@ namespace MeteorMagnet
             }
         }
 
+        /// <summary>The meteor core: a clone of a raw resource, not craftable, found only in captured meteors.</summary>
+        static void RegisterCore(List<GroupData> groupsData, HashSet<string> existing)
+        {
+            var core = Content.Core;
+            if (existing.Contains(core.id))
+            {
+                return;
+            }
+            var ids = new List<string>();
+            if (coreBaseItem.Value.Trim().Length != 0)
+            {
+                ids.Add(coreBaseItem.Value.Trim());
+            }
+            ids.AddRange(core.baseItemIds);
+            GroupDataItem baseItem = null;
+            foreach (var id in ids)
+            {
+                baseItem = groupsData.Find(g => g != null && g.id == id) as GroupDataItem;
+                if (baseItem != null)
+                {
+                    break;
+                }
+            }
+            if (baseItem == null)
+            {
+                logger.LogError("No base item for " + core.id + ", meteor cores will not drop and their recipes lose them.");
+                return;
+            }
+            var item = Instantiate(baseItem);
+            SetupClone(item, core.id, groupsData);
+            item.unlockingValue = 0f;
+            item.craftableInList = [];
+            groupsData.Add(item);
+            Log("Registered " + core.id + " (model of " + baseItem.id + ")");
+        }
+
         static FieldInfo energyField;
         static bool energyFieldLooked;
 
         /// <summary>
-        /// Our buildings draw power like the game's machines: a negative energy generation in their group data.
+        /// The game's own energy accounting must not count our buildings (the base building may draw or make power):
+        /// the network's draw is computed by the mod, so modules can lower it per building.
         /// The field is found by name so a renamed field only disables this, with a warning.
         /// </summary>
-        static void SetEnergyUse(GroupDataConstructible building, float use)
+        static void ClearEnergy(GroupDataConstructible building)
         {
             if (!energyFieldLooked)
             {
@@ -326,8 +388,8 @@ namespace MeteorMagnet
                 return;
             }
             var before = (float)energyField.GetValue(building);
-            energyField.SetValue(building, -Mathf.Abs(use));
-            LogInfo(building.id + " energy " + before + " -> " + (-Mathf.Abs(use)));
+            energyField.SetValue(building, 0f);
+            LogInfo(building.id + " game energy " + before + " -> 0, network draw " + EnergyUse(building.id) + " (counted by the mod)");
         }
 
         /// <summary>
@@ -443,7 +505,7 @@ namespace MeteorMagnet
             }
 
             gd.recipeIngredients = [];
-            foreach (var raw in recipes[id].Value.Split(','))
+            foreach (var raw in (recipes.TryGetValue(id, out var recipe) ? recipe.Value : "").Split(','))
             {
                 var ingredientId = raw.Trim();
                 if (ingredientId.Length == 0)
@@ -520,6 +582,10 @@ namespace MeteorMagnet
                     dict["GROUP_NAME_" + r.id] = ru ? r.nameRu : r.nameEn;
                     dict["GROUP_DESC_" + r.id] = ru ? r.descRu : r.descEn;
                 }
+                dict["GROUP_NAME_" + Content.Core.id] = ru ? Content.Core.nameRu : Content.Core.nameEn;
+                dict["GROUP_DESC_" + Content.Core.id] = ru ? Content.Core.descRu : Content.Core.descEn;
+                dict["MeteorMagnet_BeaconShower"] = ru ? "Метеорный маяк вызвал метеоритный дождь" : "The meteor beacon called a meteor shower";
+                dict["MeteorMagnet_CoreFound"] = ru ? "Найдено ядро метеорита!" : "Meteor core found!";
                 var sat = Content.SatelliteRocket;
                 dict["GROUP_NAME_" + sat.id] = ru ? sat.nameRu : sat.nameEn;
                 dict["GROUP_DESC_" + sat.id] = ru ? sat.descRu : sat.descEn;

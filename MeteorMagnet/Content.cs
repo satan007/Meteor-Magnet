@@ -90,6 +90,26 @@ namespace MeteorMagnet
         internal override string ConfigSection => "Display";
     }
 
+    /// <summary>
+    /// The meteor beacon: draws a meteor shower every so often while the base has power.
+    /// </summary>
+    internal class BeaconDef : BuildingDef
+    {
+        internal float intervalMinutes;
+
+        internal override string ConfigSection => "Meteor Beacon";
+    }
+
+    /// <summary>A rare item found only in captured meteors; ingredient of the advanced modules and the beacon.</summary>
+    internal class CoreDef
+    {
+        internal string id;
+        /// <summary>Item to clone (its model is used); first existing one wins.</summary>
+        internal string[] baseItemIds;
+        internal float dropChance;
+        internal string nameRu, nameEn, descRu, descEn;
+    }
+
     internal enum ResonatorEffect
     {
         /// <summary>Scanner: also detects meteors that carry no resources; magnets turn them into common ore.</summary>
@@ -108,6 +128,12 @@ namespace MeteorMagnet
         SpaceLink,
         /// <summary>Magnet: halves the chance that a capture fails.</summary>
         Stabilizer,
+        /// <summary>Scanner or magnet: draws less power.</summary>
+        PowerSaver,
+        /// <summary>Magnet: holds one more meteor at a time.</summary>
+        ExtraCaptureSlot,
+        /// <summary>Scanner: locks on faster.</summary>
+        FasterLock,
     }
 
     /// <summary>
@@ -120,6 +146,8 @@ namespace MeteorMagnet
         internal string id;
         /// <summary>True for scanner modules, false for magnet modules.</summary>
         internal bool forScanner;
+        /// <summary>Works in scanners and magnets alike.</summary>
+        internal bool forBoth;
         internal string planet;
         internal ResonatorEffect effect;
         /// <summary>Crafting station: planet resonators on T2, advanced modules on T3.</summary>
@@ -178,6 +206,12 @@ namespace MeteorMagnet
         internal const float RareLockFactor = 1.5f;
         /// <summary>Fail chance multiplier of a magnet with the field stabilizer.</summary>
         internal const float StabilizerFailFactor = 0.5f;
+        /// <summary>Power draw multiplier of a building with the power saver.</summary>
+        internal const float PowerSaverFactor = 0.6f;
+        /// <summary>Lock-on time multiplier of a scanner with the guidance module.</summary>
+        internal const float FasterLockFactor = 0.7f;
+        /// <summary>How long a mark over an uncaught meteor stays, seconds.</summary>
+        internal const float MarkerLifetime = 120f;
         internal const float RareFailBonus = 0.10f;
 
         /// <summary>What a barren meteor turns into with the Prime resonator.</summary>
@@ -322,6 +356,31 @@ namespace MeteorMagnet
             descEn = "Wall screen: meteors captured, slipped and thrown away, resources collected, scanner and magnet load, power state.",
         };
 
+        internal static readonly BeaconDef Beacon = new()
+        {
+            id = "MeteorBeacon", energy = 50f, level = 3,
+            baseGroupIds = ["Beacon", "Container1"],
+            intervalMinutes = 20f,
+            recipe = "MeteorCore,MeteorCore,MeteorCore,Alloy,Alloy,Alloy,Osmium,Osmium,Rod-uranium,Rod-uranium,Iridium,Iridium",
+            unlockTi = 100000000f,
+            color = new Color(1f, 0.45f, 0.15f),
+            nameRu = "Метеорный маяк",
+            nameEn = "Meteor Beacon",
+            descRu = "Раз в 20 минут вызывает метеоритный дождь с ресурсами, если на базе хватает энергии. Очень прожорлив: 50 кВт.",
+            descEn = "Draws a meteor shower with resources every 20 minutes while the base has power. Very power hungry: 50 kW.",
+        };
+
+        internal static readonly CoreDef Core = new()
+        {
+            id = "MeteorCore",
+            baseItemIds = ["Iridium", "Osmium", "Rod-uranium"],
+            dropChance = 0.03f,
+            nameRu = "Ядро метеорита",
+            nameEn = "Meteor Core",
+            descRu = "Плотное ядро, которое иногда остаётся от пойманного метеорита (3%). Нужно для продвинутых модулей и метеорного маяка. Всегда попадает в хранилище захвата, мимо фильтра.",
+            descEn = "A dense core sometimes left by a captured meteor (3%). Needed for advanced modules and the meteor beacon. Always goes to the magnet's storage, past the filter.",
+        };
+
         internal static IEnumerable<BuildingDef> Buildings
         {
             get
@@ -336,6 +395,7 @@ namespace MeteorMagnet
                 }
                 yield return Relay;
                 yield return Display;
+                yield return Beacon;
             }
         }
 
@@ -429,6 +489,40 @@ namespace MeteorMagnet
                 nameEn = "Field Stabilizer",
                 descRu = "Модуль гравитационного захвата. Вдвое снижает шанс срыва захвата, в том числе для редких метеоритов.",
                 descEn = "Meteor Magnet module. Halves the chance that a capture fails, rare meteors included.",
+            },
+            new Resonator
+            {
+                id = "MeteorPowerSaver", planet = null, forBoth = true,
+                effect = ResonatorEffect.PowerSaver,
+                recipe = "MeteorCore,Aluminium,Aluminium,Silicon,Silicon,Cobalt",
+                color = new Color(0.5f, 1f, 0.4f),
+                nameRu = "Модуль экономии",
+                nameEn = "Power Saver Module",
+                descRu = "Модуль сканера или захвата. Постройка потребляет на 40% меньше энергии.",
+                descEn = "Scanner or magnet module. The building draws 40% less power.",
+            },
+            new Resonator
+            {
+                id = "MeteorExpansion", planet = null, forScanner = false,
+                craftStation = DataConfig.CraftableIn.CraftStationT3,
+                effect = ResonatorEffect.ExtraCaptureSlot,
+                recipe = "MeteorCore,MeteorCore,Alloy,Alloy,Iridium,Iridium",
+                color = new Color(1f, 0.85f, 0.3f),
+                nameRu = "Модуль расширения",
+                nameEn = "Expansion Module",
+                descRu = "Модуль гравитационного захвата. Захват держит на один метеорит больше.",
+                descEn = "Meteor Magnet module. The magnet holds one more meteor at a time.",
+            },
+            new Resonator
+            {
+                id = "MeteorGuidance", planet = null, forScanner = true,
+                effect = ResonatorEffect.FasterLock,
+                recipe = "MeteorCore,Alloy,Silicon,Silicon,Iridium",
+                color = new Color(1f, 0.35f, 0.35f),
+                nameRu = "Модуль наведения",
+                nameEn = "Guidance Module",
+                descRu = "Модуль сканера. Захват цели на 30% быстрее.",
+                descEn = "Scanner module. Locks on 30% faster.",
             },
         ];
 
