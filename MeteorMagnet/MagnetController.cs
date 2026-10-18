@@ -145,6 +145,11 @@ namespace MeteorMagnet
             internal bool released;
             /// <summary>The meteor was caught passing through the ground once and put back on the surface.</summary>
             internal bool unTunneled;
+            /// <summary>The game's acceleration before capture, to put back if the meteor stalls.</summary>
+            internal float originalAcceleration = float.NaN;
+            /// <summary>When the meteor was first seen standing still (0 = moving).</summary>
+            internal float stalledSince;
+            internal bool accelerationRestored;
         }
 
         /// <summary>A meteor a scanner is tracking: locking on, then waiting for a free magnet.</summary>
@@ -674,7 +679,7 @@ namespace MeteorMagnet
                 }
 
                 // Neutralize the impact: no resources on the ground, no damage.
-                Plugin.StopAcceleration(asteroid);
+                var originalAcceleration = Plugin.LimitAcceleration(asteroid);
                 asteroid.numberOfResourceInDebris = 0;
                 asteroid.doDamage = false;
                 asteroid.shakeOnImpact = Plugin.ShakeOnImpact;
@@ -697,6 +702,7 @@ namespace MeteorMagnet
                     pile = magnet.position + away.normalized * 3f + Vector3.up * 1.5f,
                     loot = loot,
                     capturedAt = Time.time,
+                    originalAcceleration = originalAcceleration,
                 };
                 if (magnet.Upgrade(RoverUpgradeType.Jetpack) > 0)
                 {
@@ -865,10 +871,11 @@ namespace MeteorMagnet
             var angle = UnityEngine.Random.Range(120f, 240f);
             var dir = Quaternion.AngleAxis(angle, Vector3.up) * heading.normalized;
             var dist = UnityEngine.Random.Range(Content.DeflectMinDistance, Content.DeflectMaxDistance);
-            Plugin.StopAcceleration(asteroid);
+            var originalAcceleration = Plugin.LimitAcceleration(asteroid);
 
             captures[asteroid] = new Capture
             {
+                originalAcceleration = originalAcceleration,
                 magnet = magnet,
                 target = GroundPoint(magnet.position + dir * dist),
                 loot = [],
@@ -1076,6 +1083,26 @@ namespace MeteorMagnet
                 var prev = c.lastPosition;
                 var speed = prev.HasValue ? (pos - prev.Value).magnitude / dt : 0f;
                 c.lastPosition = pos;
+
+                // Safety net: a meteor that hangs in the air gets the game's own acceleration back.
+                if (prev.HasValue && !c.accelerationRestored)
+                {
+                    if (speed >= Content.StallSpeed)
+                    {
+                        c.stalledSince = 0f;
+                    }
+                    else if (c.stalledSince == 0f)
+                    {
+                        c.stalledSince = Time.time;
+                    }
+                    else if (Time.time - c.stalledSince > Content.StallTime)
+                    {
+                        c.accelerationRestored = true;
+                        Plugin.SetAcceleration(asteroid, c.originalAcceleration);
+                        Plugin.Log("Captured meteor stalled at " + pos + " (speed " + speed.ToString("0.0")
+                            + " m/s), maxAcceleration restored to " + c.originalAcceleration);
+                    }
+                }
 
                 // Too fast for the game's own impact check: it went through the ground this frame.
                 // Put it back on the surface once so the impact registers.

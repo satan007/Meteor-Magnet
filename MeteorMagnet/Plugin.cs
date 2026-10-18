@@ -49,6 +49,7 @@ namespace MeteorMagnet
 
         static AccessTools.FieldRef<Asteroid, bool> fAsteroidHasCrashed;
         static FieldInfo fAsteroidMaxAcceleration;
+        static FieldInfo fAsteroidInitialSpeed;
 
         static string pluginDir;
 
@@ -97,6 +98,7 @@ namespace MeteorMagnet
 
             fAsteroidHasCrashed = TryFieldRef<Asteroid, bool>("hasCrashed");
             fAsteroidMaxAcceleration = AccessTools.Field(typeof(Asteroid), "maxAcceleration");
+            fAsteroidInitialSpeed = AccessTools.Field(typeof(Asteroid), "initialSpeed");
             if (fAsteroidMaxAcceleration == null || fAsteroidMaxAcceleration.FieldType != typeof(float))
             {
                 Logger.LogWarning("Asteroid.maxAcceleration not found; pulled meteors will keep accelerating.");
@@ -134,15 +136,29 @@ namespace MeteorMagnet
         internal static bool HasCrashed(Asteroid a) => fAsteroidHasCrashed != null && fAsteroidHasCrashed(a);
 
         /// <summary>
-        /// A pulled meteor flies a longer way than a vanilla one; without this it builds up so much speed
-        /// that it passes through the ground in a single frame.
+        /// A pulled meteor flies a longer way than a vanilla one; at full acceleration it builds up so much speed
+        /// that it passes through the ground in a single frame. Zero acceleration freezes it in the air,
+        /// so it is only reduced. Returns the original value (NaN if the field is unknown).
         /// </summary>
-        internal static void StopAcceleration(Asteroid a)
+        internal static float LimitAcceleration(Asteroid a)
         {
-            if (fAsteroidMaxAcceleration != null)
+            if (fAsteroidMaxAcceleration == null)
             {
-                Log("Meteor maxAcceleration " + fAsteroidMaxAcceleration.GetValue(a) + " -> 0");
-                fAsteroidMaxAcceleration.SetValue(a, 0f);
+                return float.NaN;
+            }
+            var original = (float)fAsteroidMaxAcceleration.GetValue(a);
+            var limited = original * Content.CapturedAccelerationFactor;
+            fAsteroidMaxAcceleration.SetValue(a, limited);
+            Log("Meteor maxAcceleration " + original + " -> " + limited
+                + (fAsteroidInitialSpeed != null ? ", initialSpeed " + fAsteroidInitialSpeed.GetValue(a) : ""));
+            return original;
+        }
+
+        internal static void SetAcceleration(Asteroid a, float value)
+        {
+            if (fAsteroidMaxAcceleration != null && !float.IsNaN(value))
+            {
+                fAsteroidMaxAcceleration.SetValue(a, value);
             }
         }
 

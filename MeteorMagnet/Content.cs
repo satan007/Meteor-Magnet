@@ -141,6 +141,11 @@ namespace MeteorMagnet
         internal const float DeflectTurnFactor = 3f;
         /// <summary>Within this distance a pulled meteor aims straight at its target.</summary>
         internal const float SnapDistance = 40f;
+        /// <summary>Share of the game's acceleration a captured meteor keeps (full speed tunnels through the ground, zero freezes it).</summary>
+        internal const float CapturedAccelerationFactor = 0.25f;
+        /// <summary>A captured meteor slower than this (m/s) for StallTime seconds gets its acceleration back.</summary>
+        internal const float StallSpeed = 2f;
+        internal const float StallTime = 1.5f;
         /// <summary>How far below the target the final dive aims, so the meteor surely hits the ground.</summary>
         internal const float DiveDepth = 10f;
         internal const float DuplicateChance = 0.25f;
