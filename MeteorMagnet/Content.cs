@@ -20,6 +20,8 @@ namespace MeteorMagnet
         internal Color color;
         /// <summary>Power draw in the game's energy units (kW); the network works only while the base has enough power.</summary>
         internal float energy;
+        /// <summary>Earlier default power draws: a config still holding one is moved to the current default.</summary>
+        internal float[] previousEnergy => [energy / 10f];
         internal string nameRu, nameEn, descRu, descEn;
 
         /// <summary>Config section for the recipe and unlock threshold.</summary>
@@ -243,7 +245,7 @@ namespace MeteorMagnet
         [
             new MagnetTier
             {
-                id = "MeteorMagnet1", energy = 2f, level = 1,
+                id = "MeteorMagnet1", energy = 20f, level = 1,
                 baseGroupIds = ["Beacon", "Container1"],
                 hasStorage = false,
                 captureSlots = 1,
@@ -259,7 +261,7 @@ namespace MeteorMagnet
             },
             new MagnetTier
             {
-                id = "MeteorMagnet2", energy = 6f, level = 2,
+                id = "MeteorMagnet2", energy = 60f, level = 2,
                 baseGroupIds = ["Container1", "Container2"],
                 hasStorage = true,
                 captureSlots = 2,
@@ -275,7 +277,7 @@ namespace MeteorMagnet
             },
             new MagnetTier
             {
-                id = "MeteorMagnet3", energy = 15f, level = 3,
+                id = "MeteorMagnet3", energy = 150f, level = 3,
                 baseGroupIds = ["Container2", "Container1"],
                 hasStorage = true,
                 captureSlots = 3,
@@ -295,7 +297,7 @@ namespace MeteorMagnet
         [
             new ScannerTier
             {
-                id = "MeteorScanner1", energy = 3f, level = 1,
+                id = "MeteorScanner1", energy = 30f, level = 1,
                 baseGroupIds = ["Beacon", "Container1"],
                 moduleSlots = 2,
                 scanRadius = 300f,
@@ -313,7 +315,7 @@ namespace MeteorMagnet
             },
             new ScannerTier
             {
-                id = "MeteorScanner2", energy = 10f, level = 2,
+                id = "MeteorScanner2", energy = 100f, level = 2,
                 baseGroupIds = ["Beacon", "Container1"],
                 moduleSlots = 3,
                 scanRadius = 800f,
@@ -331,7 +333,7 @@ namespace MeteorMagnet
             },
             new ScannerTier
             {
-                id = "MeteorScanner3", energy = 25f, level = 3,
+                id = "MeteorScanner3", energy = 250f, level = 3,
                 baseGroupIds = ["Beacon", "Container1"],
                 moduleSlots = 4,
                 scanRadius = 2000f,
@@ -352,7 +354,7 @@ namespace MeteorMagnet
 
         internal static readonly RelayDef Relay = new()
         {
-            id = "MeteorRelay", energy = 1f, level = 1,
+            id = "MeteorRelay", energy = 10f, level = 1,
             baseGroupIds = ["Beacon", "Container1"],
             linkRadius = 60f,
             recipe = "Iron,Iron,Silicon,Silicon,Cobalt,Magnesium",
@@ -366,7 +368,7 @@ namespace MeteorMagnet
 
         internal static readonly DisplayDef Display = new()
         {
-            id = "MeteorDisplay", energy = 0.5f, level = 1,
+            id = "MeteorDisplay", energy = 5f, level = 1,
             // Filled at registration with the game's screens.
             baseGroupIds = [],
             recipe = "Iron,Iron,Silicon,Silicon,Cobalt",
@@ -380,7 +382,7 @@ namespace MeteorMagnet
 
         internal static readonly BeaconDef Beacon = new()
         {
-            id = "MeteorBeacon", energy = 50f, level = 3,
+            id = "MeteorBeacon", energy = 500f, level = 3,
             baseGroupIds = ["Beacon", "Container1"],
             intervalMinutes = 20f,
             moduleSlots = 2,
@@ -389,8 +391,8 @@ namespace MeteorMagnet
             color = new Color(1f, 0.45f, 0.15f),
             nameRu = "Метеорный маяк",
             nameEn = "Meteor Beacon",
-            descRu = "Раз в 20 минут вызывает метеоритный дождь с ресурсами, если на базе хватает энергии. Очень прожорлив: 50 кВт. 2 ячейки под модули маяка (клавиша K).",
-            descEn = "Draws a meteor shower with resources every 20 minutes while the base has power. Very power hungry: 50 kW. 2 slots for beacon modules (K key).",
+            descRu = "Раз в 20 минут вызывает метеоритный дождь с ресурсами, если на базе хватает энергии. Очень прожорлив: 500 кВт. 2 ячейки под модули маяка (клавиша K).",
+            descEn = "Draws a meteor shower with resources every 20 minutes while the base has power. Very power hungry: 500 kW. 2 slots for beacon modules (K key).",
         };
 
         internal static readonly CoreDef Core = new()

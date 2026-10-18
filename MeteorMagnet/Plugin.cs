@@ -97,7 +97,13 @@ namespace MeteorMagnet
             {
                 recipes[def.id] = Config.Bind(def.ConfigSection, "Recipe", def.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются.");
                 unlocks[def.id] = Config.Bind(def.ConfigSection, "UnlockAtTerraformation", def.unlockTi, "Индекс терраформации (Ti), при котором открывается эта постройка. 0 = доступно сразу.");
-                energyUse[def.id] = Config.Bind(def.ConfigSection, "EnergyUse", def.energy, "Потребление энергии постройкой (в единицах игры, кВт). Применяется после перезапуска игры.");
+                var energy = Config.Bind(def.ConfigSection, "EnergyUse", def.energy, "Потребление энергии постройкой (в единицах игры, кВт). Применяется после перезапуска игры.");
+                if (Array.IndexOf(def.previousEnergy, energy.Value) >= 0)
+                {
+                    Logger.LogInfo(def.id + ": energy use updated from the old default " + energy.Value + " to " + def.energy);
+                    energy.Value = def.energy;
+                }
+                energyUse[def.id] = energy;
             }
             beaconInterval = Config.Bind(Content.Beacon.ConfigSection, "IntervalMinutes", Content.Beacon.intervalMinutes, "Как часто маяк вызывает метеоритный дождь, минут.");
             coreDropChance = Config.Bind("Meteor Core", "DropChance", Content.Core.dropChance, "Шанс, что пойманный метеорит оставит ядро (0.03 = 3%).");
