@@ -279,6 +279,8 @@ namespace MeteorMagnet
                 }
                 dict["MeteorMagnet_Captured"] = ru ? "Метеорит захвачен" : "Meteor captured";
                 dict["MeteorMagnet_Stored"] = ru ? "в хранилище" : "stored";
+                dict["MeteorMagnet_Slipped"] = ru ? "Захват сорвался, метеорит падает как обычно" : "Capture slipped, the meteor falls as usual";
+                dict["MeteorMagnet_Deflected"] = ru ? "Сбой поля! Метеорит отброшен в сторону" : "Field failure! The meteor was thrown away";
                 dict["MeteorMagnet_Dropped"] = ru ? "рядом с устройством" : "dropped nearby";
                 dict["MeteorMagnet_FilterTitle"] = ru ? "Фильтр гравитационного захвата" : "Meteor Magnet filter";
                 dict["MeteorMagnet_FilterHint"] = ru

@@ -35,6 +35,11 @@ namespace MeteorMagnet
             internal float Radius => tier.WholePlanet
                 ? float.PositiveInfinity
                 : tier.radius * (effects.Contains(ResonatorEffect.RadiusBoost) ? Content.RadiusBoostFactor : 1f);
+
+            internal float LockTime => tier.lockTime
+                * (tier.WholePlanet && effects.Contains(ResonatorEffect.RadiusBoost) ? Content.LensLockFactor : 1f);
+
+            internal float FailChance => tier.failChance;
         }
 
         class Capture
@@ -45,10 +50,20 @@ namespace MeteorMagnet
             internal List<Group> loot;
             internal float capturedAt;
             internal bool delivered;
+            /// <summary>Bad failure: the meteor is thrown away, keeps its vanilla loot and gets no delivery.</summary>
+            internal bool deflected;
+        }
+
+        /// <summary>A meteor a magnet is locking on to; captured once tracked for the magnet's lock time.</summary>
+        class Lock
+        {
+            internal Magnet magnet;
+            internal float since;
         }
 
         readonly Dictionary<Asteroid, Capture> captures = [];
-        // Meteors already looked at (captured or rejected), so each one is decided only once.
+        readonly Dictionary<Asteroid, Lock> locks = [];
+        // Meteors already decided (captured, failed or not worth it), so each one is decided only once.
         readonly HashSet<int> seen = [];
         readonly List<Magnet> magnets = [];
         readonly Dictionary<int, Light> glows = [];
@@ -262,18 +277,25 @@ namespace MeteorMagnet
         {
             if (magnets.Count == 0)
             {
+                locks.Clear();
                 return;
             }
+            var alive = new HashSet<Asteroid>();
             foreach (var asteroid in FindObjectsByType<Asteroid>(FindObjectsSortMode.None))
             {
-                if (asteroid == null || !seen.Add(asteroid.GetInstanceID()))
+                if (asteroid == null || seen.Contains(asteroid.GetInstanceID()))
                 {
                     continue;
                 }
                 if (Plugin.HasCrashed(asteroid))
                 {
+                    if (locks.Remove(asteroid))
+                    {
+                        Plugin.Log("Meteor crashed before the lock completed.");
+                    }
                     continue;
                 }
+                alive.Add(asteroid);
                 // Barren meteors (plain rocks) can only be caught with the Prime resonator.
                 var barren = asteroid.groupsSelected == null || asteroid.groupsSelected.Count == 0;
 
@@ -281,7 +303,35 @@ namespace MeteorMagnet
                 var magnet = FindMagnetFor(landing, barren);
                 if (magnet == null)
                 {
-                    Plugin.Log("Meteor at " + asteroid.transform.position + " (landing ~" + landing + ", barren=" + barren + ") not captured.");
+                    // Out of range (for now): drop any lock in progress.
+                    locks.Remove(asteroid);
+                    continue;
+                }
+
+                // Lock on first: the meteor must stay tracked for the magnet's lock time.
+                if (!locks.TryGetValue(asteroid, out var lk) || lk.magnet.wo != magnet.wo)
+                {
+                    locks[asteroid] = new Lock { magnet = magnet, since = Time.time };
+                    continue;
+                }
+                if (Time.time - lk.since < magnet.LockTime)
+                {
+                    continue;
+                }
+                locks.Remove(asteroid);
+                seen.Add(asteroid.GetInstanceID());
+
+                if (UnityEngine.Random.value < magnet.FailChance)
+                {
+                    if (UnityEngine.Random.value < Content.BadFailShare)
+                    {
+                        Deflect(asteroid, magnet);
+                    }
+                    else
+                    {
+                        Plugin.Log("Capture slipped, meteor keeps its course.");
+                        NotifyText("MeteorMagnet_Slipped", DataConfig.UiInformationsType.OutInventory);
+                    }
                     continue;
                 }
 
@@ -324,10 +374,54 @@ namespace MeteorMagnet
                 Plugin.Log("Captured meteor with " + loot.Count + " resources for " + magnet.tier.id + " #" + magnet.wo.GetId());
             }
 
+            // Forget locks on meteors that are gone.
+            var stale = new List<Asteroid>();
+            foreach (var a in locks.Keys)
+            {
+                if (a == null || !alive.Contains(a))
+                {
+                    stale.Add(a);
+                }
+            }
+            foreach (var a in stale)
+            {
+                locks.Remove(a);
+            }
+
             if (seen.Count > 4096)
             {
                 seen.Clear();
             }
+        }
+
+        /// <summary>
+        /// Bad failure: the field kicks the meteor off sideways or back, far away from the magnet.
+        /// It keeps its vanilla resources and impact, just somewhere else.
+        /// </summary>
+        void Deflect(Asteroid asteroid, Magnet magnet)
+        {
+            var heading = asteroid.transform.forward;
+            heading.y = 0;
+            if (heading.sqrMagnitude < 0.01f)
+            {
+                heading = Vector3.forward;
+            }
+            // 120..240 degrees off the original course: anywhere but where it was going.
+            var angle = UnityEngine.Random.Range(120f, 240f);
+            var dir = Quaternion.AngleAxis(angle, Vector3.up) * heading.normalized;
+            var dist = UnityEngine.Random.Range(Content.DeflectMinDistance, Content.DeflectMaxDistance);
+
+            captures[asteroid] = new Capture
+            {
+                magnet = magnet,
+                target = magnet.position + dir * dist,
+                loot = [],
+                capturedAt = Time.time,
+                delivered = true,
+                deflected = true,
+            };
+            Plugin.Log("Capture failed badly, meteor thrown " + dist.ToString("0") + " m away.");
+            NotifyText("MeteorMagnet_Deflected", DataConfig.UiInformationsType.OutInventory);
         }
 
         Vector3 PredictLanding(Transform t)
@@ -476,6 +570,10 @@ namespace MeteorMagnet
             foreach (var kv in captures)
             {
                 var speed = 1f + RoverUpgrades.SpeedTurnRatePerTier * kv.Value.magnet.Upgrade(RoverUpgradeType.Speed);
+                if (kv.Value.deflected)
+                {
+                    speed = Content.DeflectTurnFactor;
+                }
                 var maxDeg = Plugin.PullTurnRate * speed * Time.deltaTime;
                 var asteroid = kv.Key;
                 if (asteroid == null || Plugin.HasCrashed(asteroid))
@@ -673,6 +771,23 @@ namespace MeteorMagnet
         {
             var jitter = UnityEngine.Random.insideUnitCircle * 0.5f;
             WorldObjectsHandler.Instance.CreateAndDropOnFloor(g, pile + new Vector3(jitter.x, 0f, jitter.y));
+        }
+
+        static void NotifyText(string key, DataConfig.UiInformationsType type)
+        {
+            if (!Plugin.ShowNotification)
+            {
+                return;
+            }
+            try
+            {
+                Managers.GetManager<DisplayersHandler>()?.GetInformationsDisplayer()
+                    ?.AddInformation(3f, Localization.GetLocalizedString(key), type, null);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log("Notification failed: " + ex.Message);
+            }
         }
 
         static void Notify(Group icon, int stored, int dropped)

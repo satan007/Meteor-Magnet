@@ -18,6 +18,10 @@ namespace MeteorMagnet
         internal bool hasStorage;
         /// <summary>Capture radius in meters; PositiveInfinity = whole planet.</summary>
         internal float radius;
+        /// <summary>Seconds a meteor must be tracked before it is captured.</summary>
+        internal float lockTime;
+        /// <summary>Chance that a capture fails when the lock completes.</summary>
+        internal float failChance;
         internal string recipe;
         internal float unlockTi;
         internal Color color;
@@ -60,6 +64,14 @@ namespace MeteorMagnet
     {
         internal const float LootBonusFactor = 1.5f;
         internal const float RadiusBoostFactor = 2f;
+        /// <summary>Selenea lens on a whole-planet magnet: lock time multiplier instead of radius.</summary>
+        internal const float LensLockFactor = 0.5f;
+        /// <summary>Share of failed captures that throw the meteor away instead of just letting it go.</summary>
+        internal const float BadFailShare = 0.35f;
+        internal const float DeflectMinDistance = 250f;
+        internal const float DeflectMaxDistance = 500f;
+        /// <summary>How much faster a thrown-away meteor turns than a captured one.</summary>
+        internal const float DeflectTurnFactor = 3f;
         internal const float DuplicateChance = 0.25f;
         internal const float ForwardRadius = 40f;
         internal const float VortexRadius = 30f;
@@ -76,6 +88,8 @@ namespace MeteorMagnet
                 baseGroupIds = ["Beacon", "Container1"],
                 hasStorage = false,
                 radius = 150f,
+                lockTime = 2.5f,
+                failChance = 0.20f,
                 recipe = "Iron,Iron,Iron,Titanium,Titanium,Magnesium,Magnesium,Silicon",
                 unlockTi = 0f,
                 color = new Color(0.35f, 0.55f, 1f),
@@ -90,6 +104,8 @@ namespace MeteorMagnet
                 baseGroupIds = ["Container1", "Container2"],
                 hasStorage = true,
                 radius = 500f,
+                lockTime = 2.0f,
+                failChance = 0.12f,
                 recipe = "Alloy,Alloy,Aluminium,Aluminium,Cobalt,Cobalt,Titanium,Titanium",
                 unlockTi = 1000000f,
                 color = new Color(0.55f, 0.25f, 1f),
@@ -104,6 +120,8 @@ namespace MeteorMagnet
                 baseGroupIds = ["Container2", "Container1"],
                 hasStorage = true,
                 radius = float.PositiveInfinity,
+                lockTime = 1.5f,
+                failChance = 0.08f,
                 recipe = "Alloy,Alloy,Alloy,Alloy,Rod-uranium,Rod-uranium,Iridium,Iridium,Zeolite,Zeolite",
                 unlockTi = 100000000f,
                 color = new Color(1f, 0.3f, 0.75f),
@@ -146,8 +164,8 @@ namespace MeteorMagnet
                 color = new Color(0.3f, 1f, 0.6f),
                 nameRu = "Селеновая линза",
                 nameEn = "Selenium Lens",
-                descRu = "Модуль для гравитационного захвата Mk2/Mk3. Удваивает радиус захвата.",
-                descEn = "Meteor Magnet Mk2/Mk3 module. Doubles the capture radius.",
+                descRu = "Модуль для гравитационного захвата Mk2/Mk3. Удваивает радиус захвата. На Mk3 вместо этого наводится на метеорит вдвое быстрее.",
+                descEn = "Meteor Magnet Mk2/Mk3 module. Doubles the capture radius. On Mk3 it locks on twice as fast instead.",
             },
             new Resonator
             {
