@@ -17,19 +17,32 @@ namespace MeteorMagnet
         Beacon,
         /// <summary>Loot arrives right at capture instead of after the impact.</summary>
         Oxygen,
+        /// <summary>A few extra storage slots, like the rover's extra equipment slots.</summary>
+        Equipment,
+        /// <summary>Filtered-out and overflow loot goes to nearby containers.</summary>
+        Logistics,
     }
 
     /// <summary>
     /// Rover (vehicle) upgrades can be put into a Mk2/Mk3 magnet's storage as well.
-    /// The game's item ids are not known in advance, so they are detected by name
-    /// (or listed explicitly in the config) when the static data loads.
+    /// The game's item ids are not known in advance, so they are matched by their English
+    /// display name ("Vehicle - T2 Inventory increase"), by keywords in the id, or listed
+    /// explicitly in the config.
     /// </summary>
     internal static class RoverUpgrades
     {
-        internal const int StorageSlotsPerTier = 12;
         internal const float SpeedTurnRatePerTier = 1f;
 
-        static readonly Dictionary<string, (RoverUpgradeType type, int tier)> byId = [];
+        // Same numbers as on the rover (wiki): Inventory T1..T3 = +18/+34/+58, Equipment T1..T2 = +3/+8.
+        static readonly int[] storageSlots = [0, 18, 34, 58];
+        static readonly int[] equipmentSlots = [0, 3, 8];
+
+        internal static int StorageSlots(int tier) => storageSlots[Math.Min(tier, storageSlots.Length - 1)];
+        internal static int EquipmentSlots(int tier) => equipmentSlots[Math.Min(tier, equipmentSlots.Length - 1)];
+
+        static readonly Dictionary<string, (RoverUpgradeType type, int tier)> byKeyword = [];
+        static readonly Dictionary<string, (RoverUpgradeType type, int tier)> byName = [];
+        static readonly Dictionary<string, (RoverUpgradeType type, int tier)> byConfig = [];
 
         static readonly (string keyword, RoverUpgradeType type)[] keywords =
         [
@@ -43,13 +56,16 @@ namespace MeteorMagnet
             ("beacon", RoverUpgradeType.Beacon),
             ("oxygen", RoverUpgradeType.Oxygen),
             ("o2", RoverUpgradeType.Oxygen),
+            ("equipment", RoverUpgradeType.Equipment),
+            ("logistic", RoverUpgradeType.Logistics),
         ];
 
         static readonly string[] vehicleMarkers = ["vehicle", "rover", "truck"];
 
         internal static bool TryGet(string id, out RoverUpgradeType type, out int tier)
         {
-            if (id != null && byId.TryGetValue(id, out var v))
+            if (id != null
+                && (byConfig.TryGetValue(id, out var v) || byName.TryGetValue(id, out v) || byKeyword.TryGetValue(id, out v)))
             {
                 type = v.type;
                 tier = v.tier;
@@ -61,11 +77,12 @@ namespace MeteorMagnet
         }
 
         /// <summary>
-        /// Builds the id table. Explicit entries look like "ItemId=Speed:2,OtherId=Storage:1".
+        /// Keyword match on item ids plus the explicit config list ("ItemId=Speed:2,OtherId=Storage:1").
         /// </summary>
         internal static void Detect(List<GroupData> groupsData, string explicitList)
         {
-            byId.Clear();
+            byKeyword.Clear();
+            byConfig.Clear();
 
             foreach (var gd in groupsData)
             {
@@ -74,18 +91,11 @@ namespace MeteorMagnet
                     continue;
                 }
                 var lower = gd.id.ToLowerInvariant();
-                if (!Array.Exists(vehicleMarkers, m => lower.Contains(m)))
+                if (!Array.Exists(vehicleMarkers, m => lower.Contains(m)) || !TryKeyword(lower, out var type))
                 {
                     continue;
                 }
-                foreach (var (keyword, type) in keywords)
-                {
-                    if (lower.Contains(keyword))
-                    {
-                        byId[gd.id] = (type, TierFromId(gd.id));
-                        break;
-                    }
-                }
+                byKeyword[gd.id] = (type, TierFrom(gd.id));
             }
 
             foreach (var raw in (explicitList ?? "").Split(','))
@@ -104,20 +114,72 @@ namespace MeteorMagnet
                     continue;
                 }
                 var tier = spec.Length > 1 && int.TryParse(spec[1].Trim(), out var t) ? t : 1;
-                byId[id] = (type, Math.Max(1, tier));
+                byConfig[id] = (type, Math.Max(1, tier));
             }
+            LogFound();
+        }
 
-            if (byId.Count == 0)
+        /// <summary>
+        /// Matches English item names like "Vehicle - T3 Speed increase" or "Vehicle - Beacon".
+        /// </summary>
+        internal static void DetectByName(Dictionary<string, string> english)
+        {
+            byName.Clear();
+            const string prefix = "GROUP_NAME_";
+            foreach (var kv in english)
             {
-                Plugin.LogWarning("No rover upgrades detected. Set [RoverUpgrades] Items in the config to enable them.");
+                if (!kv.Key.StartsWith(prefix, StringComparison.Ordinal) || kv.Value == null)
+                {
+                    continue;
+                }
+                var m = Regex.Match(kv.Value.Trim(), @"^Vehicle\s*-\s*(?:T(\d+)\s+)?(.+)$", RegexOptions.IgnoreCase);
+                if (!m.Success || !TryKeyword(m.Groups[2].Value.ToLowerInvariant(), out var type))
+                {
+                    continue;
+                }
+                var tier = m.Groups[1].Success && int.TryParse(m.Groups[1].Value, out var t) ? t : 1;
+                byName[kv.Key.Substring(prefix.Length)] = (type, tier);
             }
-            foreach (var kv in byId)
+            LogFound();
+        }
+
+        static bool TryKeyword(string lower, out RoverUpgradeType type)
+        {
+            foreach (var (keyword, t) in keywords)
+            {
+                if (lower.Contains(keyword))
+                {
+                    type = t;
+                    return true;
+                }
+            }
+            type = default;
+            return false;
+        }
+
+        static void LogFound()
+        {
+            var all = new Dictionary<string, (RoverUpgradeType type, int tier)>(byKeyword);
+            foreach (var kv in byName)
+            {
+                all[kv.Key] = kv.Value;
+            }
+            foreach (var kv in byConfig)
+            {
+                all[kv.Key] = kv.Value;
+            }
+            if (all.Count == 0)
+            {
+                Plugin.LogWarning("No rover upgrades detected yet. If none show up later, set [RoverUpgrades] Items in the config.");
+                return;
+            }
+            foreach (var kv in all)
             {
                 Plugin.LogInfo("Rover upgrade usable in magnets: " + kv.Key + " -> " + kv.Value.type + " T" + kv.Value.tier);
             }
         }
 
-        static int TierFromId(string id)
+        static int TierFrom(string id)
         {
             var m = Regex.Match(id, @"(\d+)\D*$");
             return m.Success && int.TryParse(m.Groups[1].Value, out var t) && t > 0 ? t : 1;

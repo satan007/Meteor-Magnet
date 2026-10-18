@@ -165,13 +165,16 @@ namespace MeteorMagnet
             var baseId = magnet.tier.resolvedBaseId;
             if (baseId == null || !baseSizes.TryGetValue(baseId, out var baseSize))
             {
-                if (magnet.Upgrade(RoverUpgradeType.Storage) > 0 && baseId != null && warnedNoBaseSize.Add(baseId))
+                var wantsMore = magnet.Upgrade(RoverUpgradeType.Storage) > 0 || magnet.Upgrade(RoverUpgradeType.Equipment) > 0;
+                if (wantsMore && baseId != null && warnedNoBaseSize.Add(baseId))
                 {
                     Plugin.LogWarning("Storage upgrade needs at least one ordinary " + baseId + " built on this planet to know the base size.");
                 }
                 return;
             }
-            var wanted = baseSize + RoverUpgrades.StorageSlotsPerTier * magnet.Upgrade(RoverUpgradeType.Storage);
+            var wanted = baseSize
+                + RoverUpgrades.StorageSlots(magnet.Upgrade(RoverUpgradeType.Storage))
+                + RoverUpgrades.EquipmentSlots(magnet.Upgrade(RoverUpgradeType.Equipment));
             // Never shrink below what is stored right now.
             wanted = Mathf.Max(wanted, magnet.inventory.GetInsideWorldObjects().Count);
             if (magnet.inventory.GetSize() != wanted)
@@ -464,6 +467,7 @@ namespace MeteorMagnet
                 inv = InventoriesHandler.Instance.GetInventoryById(c.magnet.wo.GetLinkedInventoryId());
             }
             var forward = c.magnet.effects.Contains(ResonatorEffect.ForwardToContainers)
+                || c.magnet.Upgrade(RoverUpgradeType.Logistics) > 0
                 ? FindNearbyContainers(c.magnet)
                 : null;
 

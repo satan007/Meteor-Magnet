@@ -72,8 +72,8 @@ namespace MeteorMagnet
                 tierUnlocks[tier.id] = Config.Bind(section, "UnlockAtTerraformation", tier.unlockTi, "Индекс терраформации (Ti), при котором открывается этот тир. 0 = доступно сразу.");
             }
             roverUpgradeItems = Config.Bind("RoverUpgrades", "Items", "",
-                "Улучшения ровера определяются автоматически по названию. Если какое-то не определилось, впишите его id вручную: "
-                + "Id=Тип:Тир через запятую, типы: Speed, Storage, Lights, Beacon, Oxygen. Пример: VehicleSpeed1=Speed:1,VehicleInventory2=Storage:2");
+                "Улучшения ровера определяются автоматически по английскому названию. Если какое-то не определилось, впишите его id вручную: "
+                + "Id=Тип:Тир через запятую, типы: Speed, Storage, Lights, Beacon, Oxygen, Equipment, Logistics. Пример: VehicleSpeed1=Speed:1,VehicleInventory2=Storage:2");
 
             foreach (var res in Content.Resonators)
             {
@@ -258,6 +258,11 @@ namespace MeteorMagnet
         [HarmonyPatch(typeof(Localization), "LoadLocalization")]
         static void Localization_LoadLocalization(Dictionary<string, Dictionary<string, string>> ___localizationDictionary)
         {
+            if (___localizationDictionary.TryGetValue("english", out var english))
+            {
+                RoverUpgrades.DetectByName(english);
+            }
+
             foreach (var kv in ___localizationDictionary)
             {
                 var ru = kv.Key == "russian";
