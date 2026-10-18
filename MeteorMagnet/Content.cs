@@ -134,6 +134,8 @@ namespace MeteorMagnet
         internal const float DeflectTurnFactor = 3f;
         /// <summary>Within this distance a pulled meteor aims straight at its target.</summary>
         internal const float SnapDistance = 40f;
+        /// <summary>How far below the target the final dive aims, so the meteor surely hits the ground.</summary>
+        internal const float DiveDepth = 10f;
         internal const float DuplicateChance = 0.25f;
         internal const float ForwardRadius = 40f;
         internal const float VortexRadius = 30f;

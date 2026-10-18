@@ -100,6 +100,8 @@ namespace MeteorMagnet
             internal bool deflected;
             /// <summary>Meteor position on the previous frame, to measure its speed.</summary>
             internal Vector3? lastPosition;
+            /// <summary>Final dive started: the meteor is aimed into the ground and no longer steered.</summary>
+            internal bool released;
         }
 
         /// <summary>A meteor a scanner is tracking: locking on, then waiting for a free magnet.</summary>
@@ -515,7 +517,7 @@ namespace MeteorMagnet
                 var capture = new Capture
                 {
                     magnet = magnet,
-                    target = magnet.position + away.normalized * Plugin.ImpactOffset,
+                    target = GroundPoint(magnet.position + away.normalized * Plugin.ImpactOffset),
                     pile = magnet.position + away.normalized * 3f + Vector3.up * 1.5f,
                     loot = loot,
                     capturedAt = Time.time,
@@ -689,7 +691,7 @@ namespace MeteorMagnet
             captures[asteroid] = new Capture
             {
                 magnet = magnet,
-                target = magnet.position + dir * dist,
+                target = GroundPoint(magnet.position + dir * dist),
                 loot = [],
                 capturedAt = Time.time,
                 delivered = true,
@@ -697,6 +699,29 @@ namespace MeteorMagnet
             };
             Plugin.Log("Capture failed badly, meteor thrown " + dist.ToString("0") + " m away.");
             NotifyText("MeteorMagnet_Deflected", DataConfig.UiInformationsType.OutInventory);
+        }
+
+        /// <summary>
+        /// The terrain (or whatever stands there) right below/above a point, so a target never floats in the air
+        /// or hides underground when the ground there is lower or higher than the magnet.
+        /// </summary>
+        static Vector3 GroundPoint(Vector3 p)
+        {
+            var from = p + Vector3.up * 500f;
+            var best = float.MaxValue;
+            foreach (var hit in Physics.RaycastAll(from, Vector3.down, 1500f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                // Skip meteors in the air.
+                if (hit.collider.GetComponentInParent<Asteroid>() != null)
+                {
+                    continue;
+                }
+                if (hit.distance < best)
+                {
+                    best = hit.distance;
+                }
+            }
+            return best < float.MaxValue ? from + Vector3.down * best : p;
         }
 
         Vector3 PredictLanding(Transform t)
@@ -842,12 +867,17 @@ namespace MeteorMagnet
                     continue;
                 }
 
+                if (c.released)
+                {
+                    continue;
+                }
                 var wanted = Quaternion.LookRotation(dir / dist);
-                // Close to the target there is no room left to curve in: aim straight at it,
-                // otherwise a fast meteor overshoots and keeps circling around the target.
+                // Close to the target there is no room left to curve in: aim once into the ground just below
+                // the target and stop steering, so the meteor dives in instead of circling or bouncing around it.
                 if (dist < Content.SnapDistance)
                 {
-                    t.rotation = wanted;
+                    t.rotation = Quaternion.LookRotation((c.target + Vector3.down * Content.DiveDepth - pos).normalized);
+                    c.released = true;
                 }
                 else
                 {
