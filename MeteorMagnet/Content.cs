@@ -223,6 +223,8 @@ namespace MeteorMagnet
         internal const float FasterLockFactor = 0.7f;
         /// <summary>Strength of the other modules next to the emergency expansion; tiers are rounded down.</summary>
         internal const float EmergencyStrength = 0.5f;
+        /// <summary>Bonus of each working kind of equipment (core chance) or rover upgrade (lower fail chance), in absolute chance.</summary>
+        internal const float SimulationBonusPerItem = 0.005f;
         /// <summary>How long a mark over an uncaught meteor stays, seconds.</summary>
         internal const float MarkerLifetime = 120f;
         internal const float RareFailBonus = 0.10f;

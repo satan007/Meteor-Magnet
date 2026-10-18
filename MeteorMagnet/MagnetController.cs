@@ -653,8 +653,8 @@ namespace MeteorMagnet
             else if (b is Magnet m)
             {
                 var stabilized = m.effects.Contains(ResonatorEffect.Stabilizer);
-                lines.Add("  => holds " + m.CaptureSlots + " meteors, fail chance " + (FailChance(m, false) * 100f).ToString("0") + "% ("
-                    + (FailChance(m, true) * 100f).ToString("0") + "% for rare)" + (stabilized ? ", field stabilizer x" + m.Weaken(Content.StabilizerFailFactor).ToString("0.##") : ""));
+                lines.Add("  => holds " + m.CaptureSlots + " meteors, fail chance " + (FailChance(m, false) * 100f).ToString("0.#") + "% ("
+                    + (FailChance(m, true) * 100f).ToString("0.#") + "% for rare, scanner rover bonus not included)" + (stabilized ? ", field stabilizer x" + m.Weaken(Content.StabilizerFailFactor).ToString("0.##") : ""));
                 var loot = new List<string>();
                 if (m.effects.Contains(ResonatorEffect.LootBonus))
                 {
@@ -681,10 +681,16 @@ namespace MeteorMagnet
                 lines.Add("  => equipment: storage +" + PlayerGear.BackpackSlotsPerTier * m.Gear(GearType.Backpack) + " slots (backpack)"
                     + ", meteor acceleration x" + CapturedAcceleration(m).ToString("0.##") + " (jetpack)"
                     + ", loot x" + (1f + PlayerGear.MiningLootPerTier * m.Gear(GearType.MiningChip)).ToString("0.##") + " (mining chip)"
-                    + ", core chance " + (CoreChance(m) * 100f).ToString("0.#") + "% (deconstruction chip)");
+                    + ", core chance " + (CoreChance(m) * 100f).ToString("0.#") + "% (deconstruction chip, equipment simulation; scanner bonus not included)");
             }
             lines.Add("  => power draw " + b.Draw.ToString("0.#") + " kW"
-                + (b.effects.Contains(ResonatorEffect.PowerSaver) ? " (power saver x" + Content.PowerSaverFactor + ")" : ""));
+                + (b.effects.Contains(ResonatorEffect.PowerSaver) ? " (power saver x" + b.Weaken(Content.PowerSaverFactor) + ")" : ""));
+            if (b.gear.Count + b.upgrades.Count > 0)
+            {
+                lines.Add("  => simulation bonus: meteor core chance +" + (GearBonus(b) * 100f).ToString("0.##") + " points (" + b.gear.Count
+                    + " equipment), fail chance -" + (RoverBonus(b) * 100f).ToString("0.##") + " points (" + b.upgrades.Count + " rover upgrades)"
+                    + (b is Scanner ? ", for the meteors this scanner hands over" : ""));
+            }
             var text = string.Join("\n", lines);
             var id = b.wo.GetId();
             if (!loggedModules.TryGetValue(id, out var last) || last != text)
@@ -852,13 +858,15 @@ namespace MeteorMagnet
                 seen.Add(asteroid.GetInstanceID());
                 magnet.busy++;
 
-                var failChance = FailChance(magnet, rare);
+                var failChance = FailChance(magnet, rare, scanner);
                 var failRoll = UnityEngine.Random.value;
                 Plugin.Log(Describe(scanner) + " hands " + Describe(asteroid) + " to " + Describe(magnet)
                     + " (" + HorizontalDistance(magnet.position, landing).ToString("0") + " m from the predicted landing, slots "
                     + magnet.busy + "/" + magnet.CaptureSlots + ", picked: " + pickedBecause + "): fail chance " + (failChance * 100f).ToString("0") + "%"
                     + (rare ? " incl. rare +" + (Content.RareFailBonus * 100f).ToString("0") + "%" : "")
-                    + (magnet.effects.Contains(ResonatorEffect.Stabilizer) ? " x" + Content.StabilizerFailFactor + " stabilizer" : "")
+                    + (magnet.effects.Contains(ResonatorEffect.Stabilizer) ? " x" + magnet.Weaken(Content.StabilizerFailFactor).ToString("0.##") + " stabilizer" : "")
+                    + (RoverBonus(magnet) + RoverBonus(scanner) > 0f ? " -" + ((RoverBonus(magnet) + RoverBonus(scanner)) * 100f).ToString("0.#")
+                        + " points rover simulation (" + magnet.upgrades.Count + " in magnet, " + scanner.upgrades.Count + " in scanner)" : "")
                     + ", roll " + (failRoll * 100f).ToString("0") + " -> " + (failRoll < failChance ? "FAILED" : "ok"));
                 if (failRoll < failChance)
                 {
@@ -883,7 +891,7 @@ namespace MeteorMagnet
                 var loot = barren ? RollBarrenLoot(asteroid, magnet) : RollLoot(asteroid, magnet);
                 var coreRoll = UnityEngine.Random.value;
                 var core = GroupsHandler.GetGroupViaId(Content.Core.id);
-                var coreChance = CoreChance(magnet);
+                var coreChance = CoreChance(magnet, scanner);
                 if (core != null && loot.Count != 0 && coreRoll < coreChance)
                 {
                     loot.Add(core);
@@ -1426,9 +1434,20 @@ namespace MeteorMagnet
             return Mathf.Min(1f, Content.CapturedAccelerationFactor + PlayerGear.JetpackAccelerationPerTier * m.Gear(GearType.Jetpack));
         }
 
-        static float CoreChance(Magnet m)
+        /// <summary>
+        /// Simulation bonus: every working kind of player equipment (through the equipment simulation) raises
+        /// the meteor core chance, every working kind of rover upgrade (through the rover simulation) lowers the
+        /// fail chance, by 0.5 points each, at the building's strength.
+        /// </summary>
+        static float GearBonus(Building b) => b == null ? 0f : b.gear.Count * Content.SimulationBonusPerItem * b.Strength;
+
+        static float RoverBonus(Building b) => b == null ? 0f : b.upgrades.Count * Content.SimulationBonusPerItem * b.Strength;
+
+        /// <summary>Meteor core chance: base, deconstruction chip, and the equipment bonus of the magnet and the scanner that found the meteor.</summary>
+        static float CoreChance(Magnet m, Scanner s = null)
         {
-            return Mathf.Clamp01(Plugin.CoreDropChance + PlayerGear.DeconstructCorePerTier * m.Gear(GearType.DeconstructChip));
+            return Mathf.Clamp01(Plugin.CoreDropChance + PlayerGear.DeconstructCorePerTier * m.Gear(GearType.DeconstructChip)
+                + GearBonus(m) + GearBonus(s));
         }
 
         /// <summary>Module slots on top of the building's own: the exoskeleton, then x2 for the emergency expansion.</summary>
@@ -1447,10 +1466,15 @@ namespace MeteorMagnet
         /// </summary>
         static bool Coin(Asteroid a) => ((uint)a.GetInstanceID() * 2654435761u >> 16 & 1u) == 0u;
 
-        static float FailChance(Magnet m, bool rare)
+        /// <summary>Fail chance: tier, rare bonus, stabilizer, then the rover bonus of the magnet and the scanner that found the meteor.</summary>
+        static float FailChance(Magnet m, bool rare, Scanner s = null)
         {
             var chance = m.tier.failChance + (rare ? Content.RareFailBonus : 0f);
-            return m.effects.Contains(ResonatorEffect.Stabilizer) ? chance * m.Weaken(Content.StabilizerFailFactor) : chance;
+            if (m.effects.Contains(ResonatorEffect.Stabilizer))
+            {
+                chance *= m.Weaken(Content.StabilizerFailFactor);
+            }
+            return Mathf.Max(0f, chance - RoverBonus(m) - RoverBonus(s));
         }
 
         static bool IsRare(Asteroid asteroid)
