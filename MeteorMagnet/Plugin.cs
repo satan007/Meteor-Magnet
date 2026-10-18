@@ -38,6 +38,9 @@ namespace MeteorMagnet
         static ConfigEntry<float> signalLineWidth;
         static ConfigEntry<float> signalLineOpacity;
         static ConfigEntry<bool> showMeteorLines;
+        static ConfigEntry<bool> captureEffects;
+        static ConfigEntry<bool> requirePower;
+        static ConfigEntry<string> displayBaseScreen;
         static ConfigEntry<bool> showNotification;
         static ConfigEntry<bool> debugLog;
         static ConfigEntry<string> filterKey;
@@ -47,6 +50,7 @@ namespace MeteorMagnet
 
         static readonly Dictionary<string, ConfigEntry<string>> recipes = [];
         static readonly Dictionary<string, ConfigEntry<float>> unlocks = [];
+        static readonly Dictionary<string, ConfigEntry<float>> energyUse = [];
 
         static AccessTools.FieldRef<Asteroid, bool> fAsteroidHasCrashed;
         static FieldInfo fAsteroidMaxAcceleration;
@@ -65,8 +69,9 @@ namespace MeteorMagnet
             lootMultiplier = Config.Bind("Capture", "LootMultiplier", 1f, "Множитель количества ресурсов с одного метеорита.");
             minLootPerMeteor = Config.Bind("Capture", "MinLootPerMeteor", 1, "Минимум ресурсов с одного метеорита (если у метеорита вообще есть ресурсы).");
             showNotification = Config.Bind("Capture", "ShowNotification", true, "Показывать сообщение при захвате метеорита.");
-            filterKey = Config.Bind("Capture", "FilterKey", "<Keyboard>/n", "Клавиша окна фильтра: наведитесь на захват Mk2/Mk3 и нажмите.");
+            filterKey = Config.Bind("Capture", "FilterKey", "<Keyboard>/n", "Клавиша окна фильтра: наведитесь на захват Mk2/Mk3 (что идёт в хранилище) или на сканер (какие метеориты он ведёт) и нажмите.");
             moduleKey = Config.Bind("Capture", "ModuleKey", "<Keyboard>/k", "Клавиша ячеек модулей: наведитесь на сканер или захват и нажмите.");
+            requirePower = Config.Bind("Energy", "RequirePower", true, "Метеорная сеть работает, только пока на базе хватает энергии. Потребление каждой постройки задаётся в её разделе (EnergyUse).");
 
             pullMeteors = Config.Bind("Visual", "PullMeteors", true, "Визуально притягивать метеорит к устройству (он упадёт рядом с ним). Если выключить, метеорит упадёт где падал, но пустым.");
             pullTurnRate = Config.Bind("Visual", "PullTurnRate", 90f, "Скорость поворота метеорита к устройству, градусов в секунду.");
@@ -76,13 +81,17 @@ namespace MeteorMagnet
             showSignalLines = Config.Bind("Visual", "ShowSignalLines", true, "Показывать линии сигнала: сканер → реле → захват.");
             signalLineWidth = Config.Bind("Visual", "SignalLineWidth", 0.03f, "Толщина линии сигнала в метрах (к концам линия сужается вдвое).");
             signalLineOpacity = Config.Bind("Visual", "SignalLineOpacity", 0.4f, "Непрозрачность линии сигнала: 0 — невидима, 1 — сплошная.");
+            captureEffects = Config.Bind("Visual", "CaptureEffects", true, "Вспышка и след при захвате метеорита, вспышка при его падении.");
             showMeteorLines = Config.Bind("Visual", "ShowMeteorLines", true, "Отладка: лучи от сканера к метеориту, который он ведёт (бледный — идёт захват цели, яркий — цель захвачена), и от захвата к метеориту, который он тянет (красный — метеорит отбрасывается).");
 
             foreach (var def in Content.Buildings)
             {
                 recipes[def.id] = Config.Bind(def.ConfigSection, "Recipe", def.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются.");
                 unlocks[def.id] = Config.Bind(def.ConfigSection, "UnlockAtTerraformation", def.unlockTi, "Индекс терраформации (Ti), при котором открывается эта постройка. 0 = доступно сразу.");
+                energyUse[def.id] = Config.Bind(def.ConfigSection, "EnergyUse", def.energy, "Потребление энергии постройкой (в единицах игры, кВт). Применяется после перезапуска игры.");
             }
+            displayBaseScreen = Config.Bind("Display", "BaseScreen", "",
+                "Id игрового экрана, который копирует дисплей. Пусто = выбрать автоматически. Найденные экраны пишутся в лог.");
             roverUpgradeItems = Config.Bind("RoverUpgrades", "Items", "",
                 "Улучшения ровера определяются автоматически по английскому названию. Если какое-то не определилось, впишите его id вручную: "
                 + "Id=Тип:Тир через запятую, типы: Speed, Storage, Lights, Beacon, Oxygen, Equipment, Logistics, Jetpack. Пример: VehicleSpeed1=Speed:1,VehicleInventory2=Storage:2");
@@ -132,9 +141,40 @@ namespace MeteorMagnet
         internal static float SignalLineWidth => Mathf.Clamp(signalLineWidth.Value, 0.005f, 1f);
         internal static float SignalLineOpacity => Mathf.Clamp01(signalLineOpacity.Value);
         internal static bool ShowMeteorLines => showMeteorLines.Value;
+        internal static bool CaptureEffects => captureEffects.Value;
         internal static bool ShowNotification => showNotification.Value;
         internal static string FilterKey => filterKey.Value.Contains("<") ? filterKey.Value : "<Keyboard>/" + filterKey.Value;
         internal static string ModuleKey => moduleKey.Value.Contains("<") ? moduleKey.Value : "<Keyboard>/" + moduleKey.Value;
+
+        static bool lastPowerOk = true;
+
+        /// <summary>
+        /// Whether the base has enough power: the game's energy production covers the demand,
+        /// our buildings' draw included. Changes are logged.
+        /// </summary>
+        internal static bool PowerOk(out string details)
+        {
+            details = "";
+            if (!requirePower.Value)
+            {
+                return true;
+            }
+            var unit = Managers.GetManager<WorldUnitsHandler>()?.GetUnit(DataConfig.WorldUnitType.Energy);
+            if (unit == null)
+            {
+                return true;
+            }
+            var production = unit.GetIncreaseValuePersSec();
+            var demand = -unit.GetDecreaseValuePersSec();
+            var ok = production - demand >= 0f;
+            details = "production " + production.ToString("0.##") + ", demand " + demand.ToString("0.##");
+            if (ok != lastPowerOk)
+            {
+                lastPowerOk = ok;
+                LogInfo("Meteor network power " + (ok ? "restored" : "LOST") + ": " + details);
+            }
+            return ok;
+        }
 
         internal static bool HasCrashed(Asteroid a) => fAsteroidHasCrashed != null && fAsteroidHasCrashed(a);
 
@@ -205,6 +245,10 @@ namespace MeteorMagnet
                 {
                     continue;
                 }
+                if (def == Content.Display)
+                {
+                    def.baseGroupIds = DisplayBases(___groupsData);
+                }
                 GroupDataConstructible baseGroup = null;
                 foreach (var baseId in def.baseGroupIds)
                 {
@@ -224,6 +268,7 @@ namespace MeteorMagnet
                 var building = Instantiate(baseGroup);
                 SetupClone(building, def.id, ___groupsData);
                 building.unlockingValue = unlocks[def.id].Value;
+                SetEnergyUse(building, energyUse[def.id].Value);
                 ___groupsData.Add(building);
                 Log("Registered building " + def.id + " (base " + baseGroup.id + ")");
             }
@@ -248,6 +293,71 @@ namespace MeteorMagnet
                 ___groupsData.Add(item);
                 Log("Registered resonator " + res.id);
             }
+        }
+
+        static FieldInfo energyField;
+        static bool energyFieldLooked;
+
+        /// <summary>
+        /// Our buildings draw power like the game's machines: a negative energy generation in their group data.
+        /// The field is found by name so a renamed field only disables this, with a warning.
+        /// </summary>
+        static void SetEnergyUse(GroupDataConstructible building, float use)
+        {
+            if (!energyFieldLooked)
+            {
+                energyFieldLooked = true;
+                var candidates = new List<string>();
+                foreach (var f in AccessTools.GetDeclaredFields(typeof(GroupDataConstructible)))
+                {
+                    if (f.FieldType == typeof(float) && f.Name.IndexOf("unitGeneration", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        candidates.Add(f.Name);
+                        if (f.Name.IndexOf("Energy", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            energyField = f;
+                        }
+                    }
+                }
+                LogInfo("Energy field: " + (energyField?.Name ?? "NOT FOUND") + " (unit generation fields: " + string.Join(", ", candidates) + ")");
+            }
+            if (energyField == null)
+            {
+                return;
+            }
+            var before = (float)energyField.GetValue(building);
+            energyField.SetValue(building, -Mathf.Abs(use));
+            LogInfo(building.id + " energy " + before + " -> " + (-Mathf.Abs(use)));
+        }
+
+        /// <summary>
+        /// The game's wall screens that can carry our statistics: the configured one first, then every
+        /// constructible whose id starts with "Screen" and whose model has text on it. All of them are logged.
+        /// </summary>
+        static string[] DisplayBases(List<GroupData> groupsData)
+        {
+            var result = new List<string>();
+            var configured = displayBaseScreen.Value.Trim();
+            if (configured.Length != 0)
+            {
+                result.Add(configured);
+            }
+            var report = new List<string>();
+            foreach (var gd in groupsData)
+            {
+                if (gd is not GroupDataConstructible gc || gc.id == null || !gc.id.StartsWith("Screen", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                var texts = gc.associatedGameObject != null ? MeteorDisplay.TextComponents(gc.associatedGameObject).Count : 0;
+                report.Add(gc.id + " (" + texts + " texts)");
+                if (texts > 0)
+                {
+                    result.Add(gc.id);
+                }
+            }
+            LogInfo("Screens found for the meteor display: " + (report.Count == 0 ? "none" : string.Join(", ", report)));
+            return result.ToArray();
         }
 
         /// <summary>
@@ -427,6 +537,13 @@ namespace MeteorMagnet
                     : "Checked resources go to storage, the rest drop nearby. Nothing checked = everything goes to storage.";
                 dict["MeteorMagnet_FilterAll"] = ru ? "Всё в хранилище" : "Store everything";
                 dict["MeteorMagnet_FilterClose"] = ru ? "Закрыть" : "Close";
+                dict["MeteorMagnet_ScannerFilterTitle"] = ru ? "Фильтр метеорного сканера" : "Meteor Scanner filter";
+                dict["MeteorMagnet_ScannerFilterHint"] = ru
+                    ? "Сканер ведёт только метеориты, в которых есть хотя бы один отмеченный ресурс. Ничего не отмечено — ведёт все."
+                    : "The scanner tracks only meteors carrying at least one checked resource. Nothing checked = tracks all.";
+                dict["MeteorMagnet_ScannerFilterAll"] = ru ? "Вести все" : "Track all";
+                dict["MeteorMagnet_NoPower"] = ru ? "Метеорной сети не хватает энергии — сканеры отключены" : "The meteor network lacks power - scanners are off";
+                dict["MeteorMagnet_DisplayTitle"] = ru ? "Метеорная сеть" : "Meteor network";
                 dict["MeteorMagnet_FilterEmpty"] = ru ? "На этой планете метеориты с ресурсами не найдены." : "No resource meteors found on this planet.";
             }
         }

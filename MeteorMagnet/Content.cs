@@ -18,6 +18,8 @@ namespace MeteorMagnet
         internal string recipe;
         internal float unlockTi;
         internal Color color;
+        /// <summary>Power draw in the game's energy units (kW); the network works only while the base has enough power.</summary>
+        internal float energy;
         internal string nameRu, nameEn, descRu, descEn;
 
         /// <summary>Config section for the recipe and unlock threshold.</summary>
@@ -79,6 +81,15 @@ namespace MeteorMagnet
         internal override string ConfigSection => "Relay";
     }
 
+    /// <summary>
+    /// Wall display with the meteor network statistics. Cloned from one of the game's screens,
+    /// which one is picked at registration.
+    /// </summary>
+    internal class DisplayDef : BuildingDef
+    {
+        internal override string ConfigSection => "Display";
+    }
+
     internal enum ResonatorEffect
     {
         /// <summary>Scanner: also detects meteors that carry no resources; magnets turn them into common ore.</summary>
@@ -95,6 +106,8 @@ namespace MeteorMagnet
         EveryResourceType,
         /// <summary>Scanner Mk3: with a satellite in orbit over the planet, scans the whole planet.</summary>
         SpaceLink,
+        /// <summary>Magnet: halves the chance that a capture fails.</summary>
+        Stabilizer,
     }
 
     /// <summary>
@@ -163,6 +176,8 @@ namespace MeteorMagnet
             "PulsarQuartz", "PulsarShard", "SolarQuartz", "MagnetarQuartz", "BalzarQuartz", "QuasarQuartz", "CosmicQuartz",
         ];
         internal const float RareLockFactor = 1.5f;
+        /// <summary>Fail chance multiplier of a magnet with the field stabilizer.</summary>
+        internal const float StabilizerFailFactor = 0.5f;
         internal const float RareFailBonus = 0.10f;
 
         /// <summary>What a barren meteor turns into with the Prime resonator.</summary>
@@ -172,7 +187,7 @@ namespace MeteorMagnet
         [
             new MagnetTier
             {
-                id = "MeteorMagnet1", level = 1,
+                id = "MeteorMagnet1", energy = 2f, level = 1,
                 baseGroupIds = ["Beacon", "Container1"],
                 hasStorage = false,
                 captureSlots = 1,
@@ -188,7 +203,7 @@ namespace MeteorMagnet
             },
             new MagnetTier
             {
-                id = "MeteorMagnet2", level = 2,
+                id = "MeteorMagnet2", energy = 6f, level = 2,
                 baseGroupIds = ["Container1", "Container2"],
                 hasStorage = true,
                 captureSlots = 2,
@@ -204,7 +219,7 @@ namespace MeteorMagnet
             },
             new MagnetTier
             {
-                id = "MeteorMagnet3", level = 3,
+                id = "MeteorMagnet3", energy = 15f, level = 3,
                 baseGroupIds = ["Container2", "Container1"],
                 hasStorage = true,
                 captureSlots = 3,
@@ -224,7 +239,7 @@ namespace MeteorMagnet
         [
             new ScannerTier
             {
-                id = "MeteorScanner1", level = 1,
+                id = "MeteorScanner1", energy = 3f, level = 1,
                 baseGroupIds = ["Beacon", "Container1"],
                 moduleSlots = 2,
                 scanRadius = 300f,
@@ -242,7 +257,7 @@ namespace MeteorMagnet
             },
             new ScannerTier
             {
-                id = "MeteorScanner2", level = 2,
+                id = "MeteorScanner2", energy = 10f, level = 2,
                 baseGroupIds = ["Beacon", "Container1"],
                 moduleSlots = 3,
                 scanRadius = 800f,
@@ -260,7 +275,7 @@ namespace MeteorMagnet
             },
             new ScannerTier
             {
-                id = "MeteorScanner3", level = 3,
+                id = "MeteorScanner3", energy = 25f, level = 3,
                 baseGroupIds = ["Beacon", "Container1"],
                 moduleSlots = 4,
                 scanRadius = 2000f,
@@ -281,7 +296,7 @@ namespace MeteorMagnet
 
         internal static readonly RelayDef Relay = new()
         {
-            id = "MeteorRelay", level = 1,
+            id = "MeteorRelay", energy = 1f, level = 1,
             baseGroupIds = ["Beacon", "Container1"],
             linkRadius = 60f,
             recipe = "Iron,Iron,Silicon,Silicon,Cobalt,Magnesium",
@@ -291,6 +306,20 @@ namespace MeteorMagnet
             nameEn = "Scanner Relay",
             descRu = "Продлевает зону связи сканера на 60 м вокруг себя. Ставить в зоне связи сканера или другого реле, можно цепочкой. Само ничего не сканирует.",
             descEn = "Extends a scanner's link area by 60 m around itself. Place it inside the link area of a scanner or another relay; chains work. Scans nothing itself.",
+        };
+
+        internal static readonly DisplayDef Display = new()
+        {
+            id = "MeteorDisplay", energy = 0.5f, level = 1,
+            // Filled at registration with the game's screens.
+            baseGroupIds = [],
+            recipe = "Iron,Iron,Silicon,Silicon,Cobalt",
+            unlockTi = 0f,
+            color = new Color(1f, 0.9f, 0.4f),
+            nameRu = "Дисплей метеорной сети",
+            nameEn = "Meteor Network Display",
+            descRu = "Настенный экран: сколько метеоритов поймано, сорвалось и отброшено, сколько ресурсов собрано, загрузка сканеров и захватов, есть ли энергия.",
+            descEn = "Wall screen: meteors captured, slipped and thrown away, resources collected, scanner and magnet load, power state.",
         };
 
         internal static IEnumerable<BuildingDef> Buildings
@@ -306,6 +335,7 @@ namespace MeteorMagnet
                     yield return t;
                 }
                 yield return Relay;
+                yield return Display;
             }
         }
 
@@ -388,6 +418,17 @@ namespace MeteorMagnet
                 nameEn = "Space Link Module",
                 descRu = "Модуль сканера Mk3. Если над планетой запущена метеорная спутниковая ракета, сканер видит метеориты по всей планете.",
                 descEn = "Scanner Mk3 module. With a meteor satellite rocket launched over the planet, the scanner sees meteors all over the planet.",
+            },
+            new Resonator
+            {
+                id = "MeteorFieldStabilizer", planet = null, forScanner = false,
+                effect = ResonatorEffect.Stabilizer,
+                recipe = "Alloy,Alloy,Iridium,Iridium,Aluminium,Aluminium,Rod-uranium",
+                color = new Color(0.4f, 0.9f, 1f),
+                nameRu = "Стабилизатор поля",
+                nameEn = "Field Stabilizer",
+                descRu = "Модуль гравитационного захвата. Вдвое снижает шанс срыва захвата, в том числе для редких метеоритов.",
+                descEn = "Meteor Magnet module. Halves the chance that a capture fails, rare meteors included.",
             },
         ];
 

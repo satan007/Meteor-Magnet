@@ -7,9 +7,9 @@ using UnityEngine.InputSystem;
 namespace MeteorMagnet
 {
     /// <summary>
-    /// Resource filter for Mk2/Mk3 magnets, similar to choosing the ore of an extractor:
-    /// aim at the magnet, press the filter key and tick the resources that should go to storage.
-    /// The choice is kept in the magnet's linked groups, so it is saved with the world.
+    /// Resource filter, similar to choosing the ore of an extractor: aim at a Mk2/Mk3 magnet (what goes
+    /// to storage) or a scanner (which meteors it tracks), press the filter key and tick the resources.
+    /// The choice is kept in the building's linked groups, so it is saved with the world.
     /// </summary>
     internal class FilterWindow : MonoBehaviour
     {
@@ -22,6 +22,7 @@ namespace MeteorMagnet
         string boundModuleKey;
 
         WorldObject magnet;
+        bool isScanner;
         readonly List<Group> candidates = [];
         readonly HashSet<string> selected = [];
         Vector2 scroll;
@@ -78,7 +79,7 @@ namespace MeteorMagnet
             {
                 return;
             }
-            var target = FindAimedMagnet();
+            var target = FindAimedFilterable();
             if (target != null)
             {
                 Open(target, wh);
@@ -127,11 +128,13 @@ namespace MeteorMagnet
             return Content.TierOf(gid) != null || Content.ScannerOf(gid) != null ? wo : null;
         }
 
-        static WorldObject FindAimedMagnet()
+        /// <summary>A Mk2/Mk3 magnet or any scanner under the crosshair.</summary>
+        static WorldObject FindAimedFilterable()
         {
             var wo = AimedWorldObject();
-            var tier = Content.TierOf(wo?.GetGroup()?.GetId());
-            return tier != null && tier.hasStorage ? wo : null;
+            var gid = wo?.GetGroup()?.GetId();
+            var tier = Content.TierOf(gid);
+            return (tier != null && tier.hasStorage) || Content.ScannerOf(gid) != null ? wo : null;
         }
 
         /// <summary>The first world object under the crosshair within reach.</summary>
@@ -160,6 +163,7 @@ namespace MeteorMagnet
         void Open(WorldObject wo, WindowsHandler wh)
         {
             magnet = wo;
+            isScanner = Content.ScannerOf(wo.GetGroup()?.GetId()) != null;
             scroll = Vector2.zero;
 
             selected.Clear();
@@ -214,6 +218,8 @@ namespace MeteorMagnet
                 }
             }
             magnet.SetLinkedGroups(list);
+            Plugin.Log("Filter of " + magnet.GetGroup()?.GetId() + " #" + magnet.GetId() + ": "
+                + (list.Count == 0 ? "none" : string.Join("/", list.ConvertAll(g => g.GetId()))));
         }
 
         void OnGUI()
@@ -238,8 +244,8 @@ namespace MeteorMagnet
             var toggle = new GUIStyle(GUI.skin.toggle) { fontSize = 18 };
             var button = new GUIStyle(GUI.skin.button) { fontSize = 18 };
 
-            GUILayout.Label(Localization.GetLocalizedString("MeteorMagnet_FilterTitle"), title);
-            GUILayout.Label(Localization.GetLocalizedString("MeteorMagnet_FilterHint"), text);
+            GUILayout.Label(Localization.GetLocalizedString(isScanner ? "MeteorMagnet_ScannerFilterTitle" : "MeteorMagnet_FilterTitle"), title);
+            GUILayout.Label(Localization.GetLocalizedString(isScanner ? "MeteorMagnet_ScannerFilterHint" : "MeteorMagnet_FilterHint"), text);
             GUILayout.Space(8);
 
             scroll = GUILayout.BeginScrollView(scroll, GUILayout.Height(h - 200));
@@ -272,7 +278,7 @@ namespace MeteorMagnet
 
             GUILayout.Space(8);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(Localization.GetLocalizedString("MeteorMagnet_FilterAll"), button, GUILayout.Height(40)))
+            if (GUILayout.Button(Localization.GetLocalizedString(isScanner ? "MeteorMagnet_ScannerFilterAll" : "MeteorMagnet_FilterAll"), button, GUILayout.Height(40)))
             {
                 selected.Clear();
                 Apply();
