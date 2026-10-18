@@ -38,6 +38,7 @@ namespace MeteorMagnet
         static ConfigEntry<bool> debugLog;
         static ConfigEntry<string> filterKey;
         static ConfigEntry<string> roverUpgradeItems;
+        static ConfigEntry<string> baseRocketId;
 
         static readonly Dictionary<string, ConfigEntry<string>> recipes = [];
         static readonly Dictionary<string, ConfigEntry<float>> unlocks = [];
@@ -82,6 +83,8 @@ namespace MeteorMagnet
             var rocket = Content.SatelliteRocket;
             recipes[rocket.id] = Config.Bind("Satellite Rocket", "Recipe", rocket.recipe, "Рецепт спутниковой ракеты: id предметов через запятую. Неизвестные id пропускаются.");
             unlocks[rocket.id] = Config.Bind("Satellite Rocket", "UnlockAtTerraformation", rocket.unlockTi, "Индекс терраформации (Ti), при котором открывается ракета. 0 = доступно сразу.");
+            baseRocketId = Config.Bind("Satellite Rocket", "BaseRocket", "",
+                "Id игровой ракеты, которую копирует спутниковая. Пусто = найти автоматически (сначала GPS/навигационный спутник). Выбранная основа пишется в лог.");
 
             fAsteroidHasCrashed = TryFieldRef<Asteroid, bool>("hasCrashed");
 
@@ -206,9 +209,7 @@ namespace MeteorMagnet
             {
                 return;
             }
-            var baseRocket = groupsData.Find(g => g != null && g.id != null
-                && g.id.StartsWith("Rocket", StringComparison.Ordinal)
-                && !g.id.StartsWith("RocketReactor", StringComparison.Ordinal));
+            var baseRocket = PickBaseRocket(groupsData);
             if (baseRocket == null)
             {
                 logger.LogError("No rocket found to base the satellite rocket on; it will not be available.");
@@ -218,18 +219,54 @@ namespace MeteorMagnet
             SetupClone(rocket, id, groupsData);
             rocket.unlockingValue = unlocks[id].Value;
 
-            for (var t = rocket.GetType(); t != null && t != typeof(ScriptableObject); t = t.BaseType)
+            foreach (var f in MultiplierFields(rocket))
+            {
+                f.SetValue(rocket, 0f);
+            }
+            groupsData.Add(rocket);
+            logger.LogInfo("Satellite rocket is based on " + baseRocket.id);
+        }
+
+        /// <summary>
+        /// The game's GPS/navigation satellite rocket is the natural base: it changes no world units, it only
+        /// unlocks things. Its id is not known in advance, so prefer a rocket without terraforming multipliers
+        /// whose id hints at a map or satellite, then any rocket without multipliers, then any rocket.
+        /// </summary>
+        static GroupData PickBaseRocket(List<GroupData> groupsData)
+        {
+            var configured = baseRocketId.Value.Trim();
+            if (configured.Length != 0)
+            {
+                var found = groupsData.Find(g => g != null && g.id == configured);
+                if (found != null)
+                {
+                    return found;
+                }
+                logger.LogWarning("BaseRocket '" + configured + "' not found, picking automatically.");
+            }
+
+            var rockets = groupsData.Where(g => g != null && g.id != null
+                && g.id.StartsWith("Rocket", StringComparison.Ordinal)
+                && !g.id.StartsWith("RocketReactor", StringComparison.Ordinal)).ToList();
+            string[] hints = ["gps", "map", "satellite", "nav"];
+            var plain = rockets.Where(r => MultiplierFields(r).All(f => (float)f.GetValue(r) == 0f)).ToList();
+            return plain.FirstOrDefault(r => hints.Any(h => r.id.IndexOf(h, StringComparison.OrdinalIgnoreCase) >= 0))
+                ?? plain.FirstOrDefault()
+                ?? rockets.FirstOrDefault();
+        }
+
+        static IEnumerable<FieldInfo> MultiplierFields(GroupData gd)
+        {
+            for (var t = gd.GetType(); t != null && t != typeof(ScriptableObject); t = t.BaseType)
             {
                 foreach (var f in AccessTools.GetDeclaredFields(t))
                 {
                     if (f.FieldType == typeof(float) && f.Name.IndexOf("multiplier", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        f.SetValue(rocket, 0f);
+                        yield return f;
                     }
                 }
             }
-            groupsData.Add(rocket);
-            Log("Registered satellite rocket (base " + baseRocket.id + ")");
         }
 
         static void SetupClone(GroupData gd, string id, List<GroupData> groupsData)
