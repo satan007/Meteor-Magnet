@@ -49,8 +49,9 @@ namespace MeteorMagnet
             (new Regex(@"^BootsSpeed(\d+)$"), GearType.Boots),
             (new Regex(@"^OxygenTank(\d+)$"), GearType.OxygenTank),
             (new Regex(@"^MultiToolMineSpeed(\d+)$"), GearType.MiningChip),
-            (new Regex(@"^MultiToolLight(\d+)$"), GearType.TorchChip),
-            (new Regex(@"^MultiToolDeconstruct(\d+)$"), GearType.DeconstructChip),
+            // The first tiers have no number: "MultiToolLight", "MultiDeconstruct".
+            (new Regex(@"^MultiToolLight(\d*)$"), GearType.TorchChip),
+            (new Regex(@"^Multi(?:Tool)?Deconstruct(\d*)$"), GearType.DeconstructChip),
             (new Regex(@"^HudCompass$"), GearType.Compass),
         ];
 

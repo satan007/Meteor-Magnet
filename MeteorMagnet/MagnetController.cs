@@ -324,6 +324,7 @@ namespace MeteorMagnet
             {
                 // Another world was loaded: nothing from the previous one applies.
                 lastWorld = WorldObjectsHandler.Instance;
+                worldLoadedAt = Time.time;
                 ModuleSlots.Reset();
                 loggedModules.Clear();
                 signalLines.Clear();
@@ -709,8 +710,17 @@ namespace MeteorMagnet
         // Whether the base has power for the network; autonomous buildings (rover oxygen) work without it.
         static bool powerOk = true;
 
+        // When the world was loaded: the base's energy is not counted yet for the first seconds.
+        float worldLoadedAt;
+        const float PowerGraceSeconds = 10f;
+
         void UpdatePower()
         {
+            if (Time.time - worldLoadedAt < PowerGraceSeconds)
+            {
+                powerOk = true;
+                return;
+            }
             var hadPower = powerOk;
             powerOk = Plugin.PowerOk(NetworkDemand(), out var powerDetails);
             if (!powerOk && hadPower)
