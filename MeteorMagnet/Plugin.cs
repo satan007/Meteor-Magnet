@@ -34,6 +34,7 @@ namespace MeteorMagnet
         static ConfigEntry<float> impactOffset;
         static ConfigEntry<bool> leaveAsteroidBody;
         static ConfigEntry<bool> shakeOnImpact;
+        static ConfigEntry<bool> showSignalLines;
         static ConfigEntry<bool> showNotification;
         static ConfigEntry<bool> debugLog;
         static ConfigEntry<string> filterKey;
@@ -68,6 +69,7 @@ namespace MeteorMagnet
             impactOffset = Config.Bind("Visual", "ImpactOffset", 25f, "На каком расстоянии от устройства падает притянутый метеорит (чтобы не бил прямо в базу).");
             leaveAsteroidBody = Config.Bind("Visual", "LeaveAsteroidBody", false, "Оставлять ли тело метеорита/кратер на месте падения.");
             shakeOnImpact = Config.Bind("Visual", "ShakeOnImpact", false, "Тряска камеры при падении захваченного метеорита.");
+            showSignalLines = Config.Bind("Visual", "ShowSignalLines", true, "Показывать линии сигнала: сканер → реле → захват.");
 
             foreach (var def in Content.Buildings)
             {
@@ -118,6 +120,7 @@ namespace MeteorMagnet
         internal static float ImpactOffset => impactOffset.Value;
         internal static bool LeaveAsteroidBody => leaveAsteroidBody.Value;
         internal static bool ShakeOnImpact => shakeOnImpact.Value;
+        internal static bool ShowSignalLines => showSignalLines.Value;
         internal static bool ShowNotification => showNotification.Value;
         internal static string FilterKey => filterKey.Value.Contains("<") ? filterKey.Value : "<Keyboard>/" + filterKey.Value;
         internal static string ModuleKey => moduleKey.Value.Contains("<") ? moduleKey.Value : "<Keyboard>/" + moduleKey.Value;

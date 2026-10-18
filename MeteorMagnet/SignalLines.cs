@@ -1,0 +1,131 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace MeteorMagnet
+{
+    /// <summary>
+    /// Glowing arcs that show the meteor network: scanner -> relay -> relay -> magnet.
+    /// Lines are rebuilt from the network on every refresh; unchanged ones are reused.
+    /// </summary>
+    internal class SignalLines
+    {
+        const int Segments = 20;
+        const float Width = 0.12f;
+        const float Lift = 3f;
+
+        static readonly string[] shaderNames =
+        [
+            "Sprites/Default",
+            "Universal Render Pipeline/Particles/Unlit",
+            "Universal Render Pipeline/Unlit",
+            "Legacy Shaders/Particles/Additive",
+            "Unlit/Color",
+        ];
+
+        readonly Dictionary<string, LineRenderer> lines = [];
+        readonly HashSet<string> used = [];
+        Material material;
+        bool noShader;
+        GameObject root;
+
+        internal void Begin()
+        {
+            used.Clear();
+        }
+
+        /// <summary>Draws (or keeps) an arc between two network nodes.</summary>
+        internal void Edge(int fromId, Vector3 from, Color fromColor, int toId, Vector3 to, Color toColor)
+        {
+            if (!EnsureMaterial())
+            {
+                return;
+            }
+            var key = fromId + ">" + toId;
+            used.Add(key);
+            if (!lines.TryGetValue(key, out var lr) || lr == null)
+            {
+                var go = new GameObject("MeteorMagnet_Signal_" + key);
+                go.transform.SetParent(root.transform, false);
+                lr = go.AddComponent<LineRenderer>();
+                lr.material = material;
+                lr.positionCount = Segments + 1;
+                lr.useWorldSpace = true;
+                lr.widthMultiplier = Width;
+                lr.numCapVertices = 2;
+                lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                lr.receiveShadows = false;
+                lines[key] = lr;
+            }
+
+            var a = from + Vector3.up * Lift;
+            var b = to + Vector3.up * Lift;
+            // Arc: a quadratic curve bulging upwards by a fifth of the distance.
+            var control = (a + b) * 0.5f + Vector3.up * (Vector3.Distance(a, b) * 0.2f);
+            for (int i = 0; i <= Segments; i++)
+            {
+                var t = i / (float)Segments;
+                var p = (1 - t) * (1 - t) * a + 2 * (1 - t) * t * control + t * t * b;
+                lr.SetPosition(i, p);
+            }
+            lr.startColor = fromColor;
+            lr.endColor = toColor;
+        }
+
+        /// <summary>Removes arcs that are no longer part of the network.</summary>
+        internal void End()
+        {
+            var stale = new List<string>();
+            foreach (var kv in lines)
+            {
+                if (!used.Contains(kv.Key))
+                {
+                    stale.Add(kv.Key);
+                }
+            }
+            foreach (var key in stale)
+            {
+                if (lines[key] != null)
+                {
+                    Object.Destroy(lines[key].gameObject);
+                }
+                lines.Remove(key);
+            }
+        }
+
+        internal void Clear()
+        {
+            used.Clear();
+            End();
+        }
+
+        bool EnsureMaterial()
+        {
+            if (material != null)
+            {
+                if (root == null)
+                {
+                    root = new GameObject("MeteorMagnet_SignalLines");
+                }
+                return true;
+            }
+            if (noShader)
+            {
+                return false;
+            }
+            foreach (var name in shaderNames)
+            {
+                var shader = Shader.Find(name);
+                if (shader != null)
+                {
+                    material = new Material(shader);
+                    Plugin.Log("Signal lines use shader " + name);
+                    root = new GameObject("MeteorMagnet_SignalLines");
+                    return true;
+                }
+            }
+            noShader = true;
+            Plugin.LogWarning("No shader found for signal lines; they will not be drawn.");
+            return false;
+        }
+    }
+}

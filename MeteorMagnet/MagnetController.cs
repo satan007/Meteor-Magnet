@@ -168,6 +168,7 @@ namespace MeteorMagnet
         // Magnets already reported as outside every link area.
         readonly HashSet<int> warnedUnlinked = [];
         readonly List<Asteroid> done = [];
+        readonly SignalLines signalLines = new();
 
         float nextScan;
         float nextOrphanCheck;
@@ -194,6 +195,7 @@ namespace MeteorMagnet
                 lastWorld = WorldObjectsHandler.Instance;
                 ModuleSlots.Reset();
                 loggedModules.Clear();
+                signalLines.Clear();
                 captures.Clear();
                 tracks.Clear();
                 seen.Clear();
@@ -364,10 +366,17 @@ namespace MeteorMagnet
         void BuildNetworks()
         {
             var linked = new HashSet<Magnet>();
+            var drawLines = Plugin.ShowSignalLines;
+            if (drawLines)
+            {
+                signalLines.Begin();
+            }
             foreach (var s in scanners)
             {
                 var factor = s.LinkFactor;
                 s.link.Add((s.position, s.tier.linkRadius * factor));
+                // Who each circle of the link area belongs to, for the signal lines.
+                var nodes = new List<(int id, Vector3 pos, Color color)> { (s.wo.GetId(), s.position, s.tier.color) };
 
                 // Relays join when they stand inside the area reached so far; repeat until nothing new joins.
                 var joined = new bool[relays.Count];
@@ -377,10 +386,22 @@ namespace MeteorMagnet
                     grew = false;
                     for (int i = 0; i < relays.Count; i++)
                     {
-                        if (!joined[i] && Covers(s.link, relays[i].position))
+                        if (joined[i])
+                        {
+                            continue;
+                        }
+                        var parent = CoveringNode(s.link, relays[i].position);
+                        if (parent >= 0)
                         {
                             joined[i] = true;
                             s.link.Add((relays[i].position, Content.Relay.linkRadius * factor));
+                            var relayNode = (relays[i].wo.GetId(), relays[i].position, Content.Relay.color);
+                            nodes.Add(relayNode);
+                            if (drawLines)
+                            {
+                                var from = nodes[parent];
+                                signalLines.Edge(from.id, from.pos, from.color, relayNode.Item1, relayNode.Item2, relayNode.Item3);
+                            }
                             grew = true;
                         }
                     }
@@ -389,12 +410,26 @@ namespace MeteorMagnet
 
                 foreach (var m in magnets)
                 {
-                    if (Covers(s.link, m.position))
+                    var parent = CoveringNode(s.link, m.position);
+                    if (parent >= 0)
                     {
                         s.network.Add(m);
                         linked.Add(m);
+                        if (drawLines)
+                        {
+                            var from = nodes[parent];
+                            signalLines.Edge(from.id, from.pos, from.color, m.wo.GetId(), m.position, m.tier.color);
+                        }
                     }
                 }
+            }
+            if (drawLines)
+            {
+                signalLines.End();
+            }
+            else
+            {
+                signalLines.Clear();
             }
 
             foreach (var m in magnets)
@@ -410,18 +445,23 @@ namespace MeteorMagnet
             }
         }
 
-        static bool Covers(List<(Vector3 center, float radius)> area, Vector3 p)
+        /// <summary>The nearest circle of the area that covers the point, or -1.</summary>
+        static int CoveringNode(List<(Vector3 center, float radius)> area, Vector3 p)
         {
-            foreach (var (center, radius) in area)
+            var best = -1;
+            var bestDist = float.MaxValue;
+            for (int i = 0; i < area.Count; i++)
             {
-                var d = center - p;
+                var d = area[i].center - p;
                 d.y = 0;
-                if (d.sqrMagnitude <= radius * radius)
+                var dist = d.sqrMagnitude;
+                if (dist <= area[i].radius * area[i].radius && dist < bestDist)
                 {
-                    return true;
+                    bestDist = dist;
+                    best = i;
                 }
             }
-            return false;
+            return best;
         }
 
         // What each building's modules were last time, so changes are logged once.
