@@ -45,6 +45,7 @@ namespace MeteorMagnet
         static readonly Dictionary<string, ConfigEntry<float>> unlocks = [];
 
         static AccessTools.FieldRef<Asteroid, bool> fAsteroidHasCrashed;
+        static FieldInfo fAsteroidMaxAcceleration;
 
         static string pluginDir;
 
@@ -89,6 +90,12 @@ namespace MeteorMagnet
                 "Id игровой ракеты, которую копирует спутниковая. Пусто = найти автоматически (сначала GPS/навигационный спутник). Выбранная основа пишется в лог.");
 
             fAsteroidHasCrashed = TryFieldRef<Asteroid, bool>("hasCrashed");
+            fAsteroidMaxAcceleration = AccessTools.Field(typeof(Asteroid), "maxAcceleration");
+            if (fAsteroidMaxAcceleration == null || fAsteroidMaxAcceleration.FieldType != typeof(float))
+            {
+                Logger.LogWarning("Asteroid.maxAcceleration not found; pulled meteors will keep accelerating.");
+                fAsteroidMaxAcceleration = null;
+            }
 
             var harmony = new Harmony("satan007.theplanetcrafter.meteormagnet");
             harmony.PatchAll(typeof(Plugin));
@@ -116,6 +123,19 @@ namespace MeteorMagnet
         internal static string ModuleKey => moduleKey.Value.Contains("<") ? moduleKey.Value : "<Keyboard>/" + moduleKey.Value;
 
         internal static bool HasCrashed(Asteroid a) => fAsteroidHasCrashed != null && fAsteroidHasCrashed(a);
+
+        /// <summary>
+        /// A pulled meteor flies a longer way than a vanilla one; without this it builds up so much speed
+        /// that it passes through the ground in a single frame.
+        /// </summary>
+        internal static void StopAcceleration(Asteroid a)
+        {
+            if (fAsteroidMaxAcceleration != null)
+            {
+                Log("Meteor maxAcceleration " + fAsteroidMaxAcceleration.GetValue(a) + " -> 0");
+                fAsteroidMaxAcceleration.SetValue(a, 0f);
+            }
+        }
 
         internal static void Log(string s)
         {

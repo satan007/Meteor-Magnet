@@ -105,6 +105,8 @@ namespace MeteorMagnet
             internal Vector3? lastPosition;
             /// <summary>Final dive started: the meteor is aimed into the ground and no longer steered.</summary>
             internal bool released;
+            /// <summary>The meteor was caught passing through the ground once and put back on the surface.</summary>
+            internal bool unTunneled;
         }
 
         /// <summary>A meteor a scanner is tracking: locking on, then waiting for a free magnet.</summary>
@@ -548,6 +550,7 @@ namespace MeteorMagnet
                 }
 
                 // Neutralize the impact: no resources on the ground, no damage.
+                Plugin.StopAcceleration(asteroid);
                 asteroid.numberOfResourceInDebris = 0;
                 asteroid.doDamage = false;
                 asteroid.shakeOnImpact = Plugin.ShakeOnImpact;
@@ -738,6 +741,7 @@ namespace MeteorMagnet
             var angle = UnityEngine.Random.Range(120f, 240f);
             var dir = Quaternion.AngleAxis(angle, Vector3.up) * heading.normalized;
             var dist = UnityEngine.Random.Range(Content.DeflectMinDistance, Content.DeflectMaxDistance);
+            Plugin.StopAcceleration(asteroid);
 
             captures[asteroid] = new Capture
             {
@@ -750,6 +754,31 @@ namespace MeteorMagnet
             };
             Plugin.Log("Capture failed badly, meteor thrown " + dist.ToString("0") + " m away.");
             NotifyText("MeteorMagnet_Deflected", DataConfig.UiInformationsType.OutInventory);
+        }
+
+        /// <summary>
+        /// First ground (not a meteor) between two points of a meteor's path.
+        /// </summary>
+        static bool TryGroundBetween(Vector3 from, Vector3 to, out Vector3 point)
+        {
+            point = default;
+            var d = to - from;
+            var len = d.magnitude;
+            if (len < 0.01f)
+            {
+                return false;
+            }
+            var best = float.MaxValue;
+            foreach (var hit in Physics.RaycastAll(from, d / len, len, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (hit.collider.GetComponentInParent<Asteroid>() != null || hit.distance >= best)
+                {
+                    continue;
+                }
+                best = hit.distance;
+                point = hit.point;
+            }
+            return best < float.MaxValue;
         }
 
         /// <summary>
@@ -911,8 +940,20 @@ namespace MeteorMagnet
                 var pos = t.position;
                 var dir = c.target - pos;
                 var dist = dir.magnitude;
-                var speed = c.lastPosition.HasValue ? (pos - c.lastPosition.Value).magnitude / dt : 0f;
+                var prev = c.lastPosition;
+                var speed = prev.HasValue ? (pos - prev.Value).magnitude / dt : 0f;
                 c.lastPosition = pos;
+
+                // Too fast for the game's own impact check: it went through the ground this frame.
+                // Put it back on the surface once so the impact registers.
+                if (prev.HasValue && !c.unTunneled && TryGroundBetween(prev.Value, pos, out var surface))
+                {
+                    c.unTunneled = true;
+                    t.position = surface + (prev.Value - surface).normalized * 0.5f;
+                    Plugin.Log("Meteor passed through the ground at " + surface.ToString() + " (speed " + speed.ToString("0")
+                        + " m/s), put back on the surface");
+                    continue;
+                }
                 if (dist < 1f)
                 {
                     continue;
@@ -994,12 +1035,24 @@ namespace MeteorMagnet
                 ? FindNearbyContainers(c.magnet)
                 : null;
 
-            int stored = 0, dropped = 0;
+            int stored = 0, dropped = 0, filteredOut = 0, full = 0;
+            if (c.magnet.tier.hasStorage && inv == null)
+            {
+                Plugin.Log("Magnet #" + c.magnet.wo.GetId() + " storage inventory not found, everything goes to the pile");
+            }
             foreach (var g in c.loot)
             {
-                var toStorage = inv != null
-                    && (c.magnet.filter.Count == 0 || c.magnet.filter.Contains(g.GetId()))
-                    && !inv.IsFull();
+                var passes = c.magnet.filter.Count == 0 || c.magnet.filter.Contains(g.GetId());
+                var isFull = inv != null && inv.IsFull();
+                if (inv != null && !passes)
+                {
+                    filteredOut++;
+                }
+                else if (isFull)
+                {
+                    full++;
+                }
+                var toStorage = inv != null && passes && !isFull;
                 if (toStorage)
                 {
                     stored++;
@@ -1030,7 +1083,9 @@ namespace MeteorMagnet
             }
 
             Plugin.Log("Delivered " + c.loot.Count + " items from magnet #" + c.magnet.wo.GetId() + ": " + stored + " stored/forwarded, "
-                + dropped + " dropped at " + c.pile);
+                + dropped + " dropped at " + c.pile
+                + (inv != null ? " (storage " + inv.GetInsideWorldObjects().Count + "/" + inv.GetSize() + ", filtered out " + filteredOut
+                    + ", storage full " + full + ", filter: " + (c.magnet.filter.Count == 0 ? "none" : string.Join("/", c.magnet.filter)) + ")" : ""));
             if (Plugin.ShowNotification && c.loot.Count != 0)
             {
                 Notify(c.loot[0], stored, dropped);
