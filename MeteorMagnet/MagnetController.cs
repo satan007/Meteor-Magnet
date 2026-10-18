@@ -34,25 +34,63 @@ namespace MeteorMagnet
             /// <summary>The building's separate module slots (see <see cref="ModuleSlots"/>).</summary>
             internal Inventory moduleInventory;
 
+            /// <summary>What each item in the module slots does here, for the debug log.</summary>
+            internal readonly List<string> moduleReport = [];
+
+            // Rover upgrades each building type makes use of.
+            static readonly HashSet<RoverUpgradeType> scannerUpgrades = [RoverUpgradeType.Equipment, RoverUpgradeType.Beacon];
+            static readonly HashSet<RoverUpgradeType> magnetUpgrades =
+                [RoverUpgradeType.Storage, RoverUpgradeType.Speed, RoverUpgradeType.Lights, RoverUpgradeType.Logistics, RoverUpgradeType.Jetpack];
+
             internal void ReadModules()
             {
                 if (moduleInventory == null)
                 {
                     return;
                 }
+                var isScanner = this is Scanner;
+                var here = isScanner ? "scanner" : "magnet";
                 foreach (var item in moduleInventory.GetInsideWorldObjects())
                 {
                     var itemId = item?.GetGroup()?.GetId();
                     var res = Content.ResonatorOf(itemId);
-                    // A module only works in the building it is made for.
-                    if (res != null && res.forScanner == (this is Scanner))
+                    if (res != null)
                     {
-                        effects.Add(res.effect);
+                        // A module only works in the building it is made for.
+                        if (res.forScanner != isScanner)
+                        {
+                            moduleReport.Add(itemId + ": IGNORED, works only in a " + (res.forScanner ? "scanner" : "magnet"));
+                        }
+                        else if (!effects.Add(res.effect))
+                        {
+                            moduleReport.Add(itemId + ": IGNORED, " + res.effect + " is already active (duplicates do not stack)");
+                        }
+                        else
+                        {
+                            moduleReport.Add(itemId + ": active -> " + res.effect);
+                        }
+                        continue;
                     }
-                    if (RoverUpgrades.TryGet(itemId, out var type, out var upTier) && upTier > Upgrade(type))
+                    if (RoverUpgrades.TryGet(itemId, out var type, out var upTier))
                     {
-                        upgrades[type] = upTier;
+                        var used = isScanner ? scannerUpgrades : magnetUpgrades;
+                        if (!used.Contains(type))
+                        {
+                            moduleReport.Add(itemId + ": IGNORED, rover " + type + " has no effect in a " + here);
+                        }
+                        else if (upTier > Upgrade(type))
+                        {
+                            moduleReport.Add(itemId + ": active -> rover " + type + " T" + upTier
+                                + (upgrades.ContainsKey(type) ? " (replaces the lower tier)" : ""));
+                            upgrades[type] = upTier;
+                        }
+                        else
+                        {
+                            moduleReport.Add(itemId + ": IGNORED, " + type + " T" + Upgrade(type) + " or higher is already active");
+                        }
+                        continue;
                     }
+                    moduleReport.Add((itemId ?? "?") + ": not a module");
                 }
             }
         }
@@ -389,20 +427,66 @@ namespace MeteorMagnet
         // What each building's modules were last time, so changes are logged once.
         readonly Dictionary<int, string> loggedModules = [];
 
+        /// <summary>
+        /// Logs, when anything changes, what is in a building's module slots, what each item does there,
+        /// and the resulting numbers of the building.
+        /// </summary>
         void LogModules(Building b)
         {
-            var parts = new List<string>();
-            foreach (var e in b.effects)
+            var lines = new List<string>();
+            lines.Add(b.moduleInventory == null
+                ? "module slots not ready yet"
+                : "module slots " + b.moduleInventory.GetInsideWorldObjects().Count + "/" + b.moduleInventory.GetSize());
+            foreach (var r in b.moduleReport)
             {
-                parts.Add(e.ToString());
+                lines.Add("  " + r);
             }
-            foreach (var kv in b.upgrades)
+            if (b is Scanner sc)
             {
-                parts.Add(kv.Key + " T" + kv.Value);
+                var lens = sc.effects.Contains(ResonatorEffect.RadiusBoost);
+                lines.Add("  => scan radius: " + (sc.planetWide ? "whole planet (satellite + Space Link)"
+                    : sc.ScanRadius.ToString("0") + " m" + (lens ? " (base " + sc.tier.scanRadius.ToString("0") + " x" + Content.RadiusBoostFactor + " lens)" : "")));
+                if (sc.tier.usesSatellite && !sc.planetWide)
+                {
+                    lines.Add("     whole planet needs: " + (sc.effects.Contains(ResonatorEffect.SpaceLink) ? "" : "Space Link module ")
+                        + (Satellite.IsLaunched(sc.wo.GetPlanetHash()) ? "" : "satellite launched over this planet"));
+                }
+                lines.Add("  => link radius: " + (sc.tier.linkRadius * sc.LinkFactor).ToString("0") + " m (relays "
+                    + (Content.Relay.linkRadius * sc.LinkFactor).ToString("0") + " m)" + (sc.LinkFactor > 1f ? " incl. Beacon x" + sc.LinkFactor : ""));
+                lines.Add("  => tracks " + sc.TrackSlots + " meteors (base " + sc.tier.trackSlots + ")"
+                    + ", lock-on " + sc.LockTime.ToString("0.0") + " s (rare x" + Content.RareLockFactor + ")"
+                    + ", rare meteors " + (sc.tier.seesRare ? "seen" : "NOT seen")
+                    + ", barren meteors " + (sc.effects.Contains(ResonatorEffect.CaptureBarren) ? "seen" : "not seen"));
             }
-            parts.Sort(StringComparer.Ordinal);
-            var text = (b.moduleInventory == null ? "slots not ready; " : "slots " + b.moduleInventory.GetInsideWorldObjects().Count
-                + "/" + b.moduleInventory.GetSize() + "; ") + (parts.Count == 0 ? "no modules" : string.Join(", ", parts));
+            else if (b is Magnet m)
+            {
+                lines.Add("  => holds " + m.tier.captureSlots + " meteors, fail chance " + (m.tier.failChance * 100f).ToString("0") + "% (+"
+                    + (Content.RareFailBonus * 100f).ToString("0") + "% for rare)");
+                var loot = new List<string>();
+                if (m.effects.Contains(ResonatorEffect.LootBonus))
+                {
+                    loot.Add("x" + Content.LootBonusFactor + " amount");
+                }
+                if (m.effects.Contains(ResonatorEffect.DuplicateChance))
+                {
+                    loot.Add((Content.DuplicateChance * 100f).ToString("0") + "% duplicate per item");
+                }
+                if (m.effects.Contains(ResonatorEffect.EveryResourceType))
+                {
+                    loot.Add("at least one of each resource type");
+                }
+                if (m.effects.Contains(ResonatorEffect.Vortex))
+                {
+                    loot.Add("vortex pulls loose resources within " + Content.VortexRadius.ToString("0") + " m");
+                }
+                lines.Add("  => loot: " + (loot.Count == 0 ? "as the meteor carries" : string.Join(", ", loot)));
+                lines.Add("  => pull turn speed x" + (1f + RoverUpgrades.SpeedTurnRatePerTier * m.Upgrade(RoverUpgradeType.Speed))
+                    + ", storage +" + RoverUpgrades.StorageSlots(m.Upgrade(RoverUpgradeType.Storage)) + " slots"
+                    + (m.Upgrade(RoverUpgradeType.Logistics) > 0 ? ", overflow to chests within " + Content.ForwardRadius.ToString("0") + " m" : "")
+                    + (m.Upgrade(RoverUpgradeType.Jetpack) > 0 ? ", loot delivered at capture" : "")
+                    + (m.Upgrade(RoverUpgradeType.Lights) > 0 ? ", pile light" : ""));
+            }
+            var text = string.Join("\n", lines);
             var id = b.wo.GetId();
             if (!loggedModules.TryGetValue(id, out var last) || last != text)
             {
@@ -890,6 +974,8 @@ namespace MeteorMagnet
                 mult *= Content.LootBonusFactor;
             }
             var total = Mathf.Max(Plugin.MinLootPerMeteor, Mathf.RoundToInt(baseCount * mult));
+            var extraTypes = 0;
+            var extraDuplicates = 0;
             var duplicates = magnet.effects.Contains(ResonatorEffect.DuplicateChance);
 
             var picks = new List<Group>();
@@ -904,6 +990,7 @@ namespace MeteorMagnet
                         picks.Add(g);
                     }
                 }
+                extraTypes = Mathf.Max(0, picks.Count - total);
             }
             while (picks.Count < total)
             {
@@ -916,8 +1003,14 @@ namespace MeteorMagnet
                 if (duplicates && UnityEngine.Random.value < Content.DuplicateChance)
                 {
                     result.Add(g);
+                    extraDuplicates++;
                 }
             }
+            Plugin.Log("Loot roll for #" + magnet.wo.GetId() + ": base " + baseCount.ToString("0.#") + " x" + mult.ToString("0.##")
+                + (mult != Plugin.LootMultiplier ? " (Humble x" + Content.LootBonusFactor + ")" : "") + " = " + total
+                + (extraTypes > 0 ? ", +" + extraTypes + " for every type (Skeo)" : "")
+                + (extraDuplicates > 0 ? ", +" + extraDuplicates + " duplicated (Toxicity)" : "")
+                + " -> " + result.Count + " items");
             return result;
         }
 
