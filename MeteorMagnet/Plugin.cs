@@ -107,7 +107,13 @@ namespace MeteorMagnet
             }
             beaconInterval = Config.Bind(Content.Beacon.ConfigSection, "IntervalMinutes", Content.Beacon.intervalMinutes, "Как часто маяк вызывает метеоритный дождь, минут.");
             coreDropChance = Config.Bind("Meteor Core", "DropChance", Content.Core.dropChance, "Шанс, что пойманный метеорит оставит ядро (0.03 = 3%).");
-            coreTradeValue = Config.Bind("Meteor Core", "TradeValue", -1, "Цена ядра в терратокенах для торговых ракет. -1 = вдвое дороже самого дорогого продаваемого предмета игры. 0 = не продаётся.");
+            coreTradeValue = Config.Bind("Meteor Core", "TradeValue", 2000, "Цена ядра в терратокенах для торговых ракет. 0 = не продаётся.");
+            if (coreTradeValue.Value < 0)
+            {
+                // The old default (-1, automatic price) gave far too much.
+                Logger.LogInfo("Meteor Core: trade value updated from the old default " + coreTradeValue.Value + " to " + coreTradeValue.DefaultValue);
+                coreTradeValue.Value = (int)coreTradeValue.DefaultValue;
+            }
             coreBaseItem = Config.Bind("Meteor Core", "BaseItem", "", "Id предмета игры, модель которого берёт ядро. Пусто = иридий (если нет — осмий, урановый стержень).");
             displayBaseScreen = Config.Bind("Display", "BaseScreen", "",
                 "Id игрового экрана, который копирует дисплей. Пусто = выбрать автоматически (экран, открывающий свой интерфейс, сначала орбитальный). Найденные экраны пишутся в лог.");
@@ -374,21 +380,9 @@ namespace MeteorMagnet
             item.unlockingValue = 0f;
             item.craftableInList = [];
             // Sold by trade rockets like any resource: a sink for the cores players do not need.
-            // Raw ores are not sellable (trade value 0), so the automatic price follows the dearest sellable item.
-            var dearest = 0;
-            string dearestId = null;
-            foreach (var gd in groupsData)
-            {
-                if (gd is GroupDataItem gi && gi.tradeValue > dearest)
-                {
-                    dearest = (int)gi.tradeValue;
-                    dearestId = gi.id;
-                }
-            }
-            item.tradeValue = coreTradeValue.Value >= 0 ? coreTradeValue.Value : dearest * 2;
+            item.tradeValue = coreTradeValue.Value;
             groupsData.Add(item);
-            LogInfo("Registered " + core.id + " (model of " + baseItem.id + ", trade value " + item.tradeValue
-                + "; dearest sellable item " + (dearestId ?? "none") + " = " + dearest + ")");
+            LogInfo("Registered " + core.id + " (model of " + baseItem.id + ", trade value " + item.tradeValue + ")");
         }
 
         static FieldInfo energyField;
