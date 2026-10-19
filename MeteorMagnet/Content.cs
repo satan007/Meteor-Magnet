@@ -163,6 +163,8 @@ namespace MeteorMagnet
         internal bool forBoth;
         /// <summary>Works only in the meteor beacon.</summary>
         internal bool forBeacon;
+        /// <summary>Closed at the start: its recipe opens with a meteor blueprint decoded in a module slot.</summary>
+        internal bool locked;
         internal string planet;
         internal ResonatorEffect effect;
         /// <summary>Crafting station: planet resonators on T2, advanced modules on T3.</summary>
@@ -406,6 +408,21 @@ namespace MeteorMagnet
             descEn = "A dense core sometimes left by a captured meteor (3%). Needed for every module and the meteor beacon. Always goes to the magnet's storage, past the filter.",
         };
 
+        /// <summary>
+        /// Rare drop of captured meteors. Put into any scanner's or magnet's module slot, it is decoded and opens
+        /// the recipe of a random locked module.
+        /// </summary>
+        internal static readonly CoreDef Blueprint = new()
+        {
+            id = "MeteorBlueprint",
+            baseItemIds = ["BlueprintT1", "Rod-uranium"],
+            dropChance = 0.02f,
+            nameRu = "Метеорный чертёж",
+            nameEn = "Meteor Blueprint",
+            descRu = "Данные, записанные в ядре пойманного метеорита (2%). Положи в ячейку модулей сканера или захвата: чертёж расшифруется и откроет рецепт случайного закрытого модуля. Если закрытых не осталось — превратится в ядро метеорита.",
+            descEn = "Data stored in the core of a captured meteor (2%). Put it into a scanner's or magnet's module slot: it is decoded and opens the recipe of a random locked module. With none left, it turns into a meteor core.",
+        };
+
         internal static IEnumerable<BuildingDef> Buildings
         {
             get
@@ -513,7 +530,7 @@ namespace MeteorMagnet
             },
             new Resonator
             {
-                id = "MeteorFieldStabilizer", planet = null, forScanner = false,
+                id = "MeteorFieldStabilizer", planet = null, locked = true, forScanner = false,
                 effect = ResonatorEffect.Stabilizer,
                 recipe = "MeteorCore,Alloy,Alloy,Iridium,Iridium,Aluminium,Aluminium,Rod-uranium",
                 previousRecipes = ["Alloy,Alloy,Iridium,Iridium,Aluminium,Aluminium,Rod-uranium"],
@@ -525,7 +542,7 @@ namespace MeteorMagnet
             },
             new Resonator
             {
-                id = "MeteorPowerSaver", planet = null, forBoth = true,
+                id = "MeteorPowerSaver", planet = null, locked = true, forBoth = true,
                 effect = ResonatorEffect.PowerSaver,
                 recipe = "MeteorCore,Aluminium,Aluminium,Silicon,Silicon,Cobalt",
                 color = new Color(0.5f, 1f, 0.4f),
@@ -536,7 +553,7 @@ namespace MeteorMagnet
             },
             new Resonator
             {
-                id = "MeteorExpansion", planet = null, forScanner = false,
+                id = "MeteorExpansion", planet = null, locked = true, forScanner = false,
                 craftStation = DataConfig.CraftableIn.CraftStationT3,
                 effect = ResonatorEffect.ExtraCaptureSlot,
                 recipe = "MeteorCore,MeteorCore,Alloy,Alloy,Iridium,Iridium",
@@ -548,7 +565,7 @@ namespace MeteorMagnet
             },
             new Resonator
             {
-                id = "MeteorGuidance", planet = null, forScanner = true,
+                id = "MeteorGuidance", planet = null, locked = true, forScanner = true,
                 effect = ResonatorEffect.FasterLock,
                 recipe = "MeteorCore,Alloy,Silicon,Silicon,Iridium",
                 color = new Color(1f, 0.35f, 0.35f),
@@ -559,7 +576,7 @@ namespace MeteorMagnet
             },
             new Resonator
             {
-                id = "MeteorRoverSimulation", planet = null, forBoth = true,
+                id = "MeteorRoverSimulation", planet = null, locked = true, forBoth = true,
                 effect = ResonatorEffect.RoverSimulation,
                 recipe = "MeteorCore,Aluminium,Aluminium,Silicon,Silicon,Iron",
                 color = new Color(1f, 0.6f, 0.2f),
@@ -570,7 +587,7 @@ namespace MeteorMagnet
             },
             new Resonator
             {
-                id = "MeteorGearSimulation", planet = null, forBoth = true,
+                id = "MeteorGearSimulation", planet = null, locked = true, forBoth = true,
                 effect = ResonatorEffect.GearSimulation,
                 recipe = "MeteorCore,Silicon,Silicon,Cobalt,Cobalt,Titanium",
                 color = new Color(0.85f, 0.85f, 0.95f),
@@ -581,7 +598,7 @@ namespace MeteorMagnet
             },
             new Resonator
             {
-                id = "MeteorBeaconFrequency", planet = null, forBeacon = true,
+                id = "MeteorBeaconFrequency", planet = null, locked = true, forBeacon = true,
                 effect = ResonatorEffect.BeaconFrequency,
                 recipe = "MeteorCore,Alloy,Alloy,Silicon,Silicon,Cobalt",
                 color = new Color(1f, 0.55f, 0.1f),
@@ -592,7 +609,7 @@ namespace MeteorMagnet
             },
             new Resonator
             {
-                id = "MeteorBeaconCommon", planet = null, forBeacon = true,
+                id = "MeteorBeaconCommon", planet = null, locked = true, forBeacon = true,
                 effect = ResonatorEffect.BeaconCommon,
                 recipe = "MeteorCore,Iron,Iron,Titanium,Titanium,Magnesium",
                 color = new Color(0.8f, 0.7f, 0.5f),
@@ -603,7 +620,7 @@ namespace MeteorMagnet
             },
             new Resonator
             {
-                id = "MeteorEmergencyExpansion", planet = null, forBoth = true,
+                id = "MeteorEmergencyExpansion", planet = null, locked = true, forBoth = true,
                 effect = ResonatorEffect.EmergencyExpansion,
                 recipe = "MeteorCore,MeteorCore,Alloy,Iron,Iron,Silicon,Silicon",
                 color = new Color(1f, 0.2f, 0.2f),

@@ -112,6 +112,7 @@ namespace MeteorMagnet
             {
                 yield return r.id;
             }
+            yield return Content.Blueprint.id;
             foreach (var id in RoverUpgrades.AllIds())
             {
                 yield return id;

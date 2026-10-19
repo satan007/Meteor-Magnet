@@ -87,6 +87,11 @@ namespace MeteorMagnet
                 foreach (var item in moduleInventory.GetInsideWorldObjects())
                 {
                     var itemId = item?.GetGroup()?.GetId();
+                    if (itemId == Content.Blueprint.id)
+                    {
+                        moduleReport.Add(itemId + ": " + DecodeBlueprint(item, moduleInventory));
+                        continue;
+                    }
                     var res = Content.ResonatorOf(itemId);
                     if (res != null)
                     {
@@ -885,6 +890,15 @@ namespace MeteorMagnet
                     }
                     NotifyText("MeteorMagnet_CoreFound", DataConfig.UiInformationsType.InInventory);
                 }
+                var blueprintRoll = UnityEngine.Random.value;
+                var blueprint = GroupsHandler.GetGroupViaId(Content.Blueprint.id);
+                if (blueprint != null && loot.Count != 0 && blueprintRoll < Plugin.BlueprintDropChance)
+                {
+                    loot.Add(blueprint);
+                    NotifyText("MeteorMagnet_BlueprintFound", DataConfig.UiInformationsType.InInventory);
+                }
+                Plugin.Log("Meteor blueprint roll " + (blueprintRoll * 100f).ToString("0.0") + " vs " + (Plugin.BlueprintDropChance * 100f).ToString("0.0")
+                    + "% -> " + (blueprint == null ? "blueprint item missing" : blueprintRoll < Plugin.BlueprintDropChance ? "BLUEPRINT FOUND" : "none"));
                 Plugin.Log("Meteor core roll " + (coreRoll * 100f).ToString("0.0") + " vs " + (coreChance * 100f).ToString("0.0")
                     + "% -> " + (core == null ? "core item missing" : cores > 0 ? cores + " CORE(S) FOUND" : "no core"));
                 if (loot.Count == 0)
@@ -1497,6 +1511,63 @@ namespace MeteorMagnet
         static bool Coin(Asteroid a) => ((uint)a.GetInstanceID() * 2654435761u >> 16 & 1u) == 0u;
 
         /// <summary>Fail chance: tier, rare bonus, stabilizer, then the rover bonus of the magnet and the scanner that found the meteor.</summary>
+        // Blueprints being decoded (their removal from the slot is asynchronous), so each is decoded once.
+        static readonly HashSet<int> decoding = [];
+
+        /// <summary>
+        /// A meteor blueprint in a module slot: removed, and the recipe of a random locked module opens
+        /// (for everybody, saved with the world). With nothing left to open it turns into a meteor core.
+        /// </summary>
+        static string DecodeBlueprint(WorldObject item, Inventory inv)
+        {
+            if (!decoding.Add(item.GetId()))
+            {
+                return "being decoded";
+            }
+            var locked = new List<Group>();
+            foreach (var r in Content.Resonators)
+            {
+                var g = r.locked ? GroupsHandler.GetGroupViaId(r.id) : null;
+                if (g != null && !UnlockedGroupsHandler.Instance.IsGloballyUnlocked(g))
+                {
+                    locked.Add(g);
+                }
+            }
+            InventoriesHandler.Instance.RemoveItemFromInventory(item, inv, true, null);
+            if (locked.Count == 0)
+            {
+                var core = GroupsHandler.GetGroupViaId(Content.Core.id);
+                if (core != null)
+                {
+                    InventoriesHandler.Instance.AddItemToInventory(core, inv, (success, id) =>
+                    {
+                        if (!success)
+                        {
+                            DestroyFailed(id);
+                            WorldObjectsHandler.Instance.CreateAndDropOnFloor(core, Managers.GetManager<PlayersManager>()
+                                .GetActivePlayerController().transform.position + Vector3.up);
+                        }
+                    });
+                }
+                Plugin.LogInfo("Meteor blueprint decoded: every module is already open, turned into a meteor core");
+                return "decoded, nothing left to open -> meteor core";
+            }
+            var pick = locked[UnityEngine.Random.Range(0, locked.Count)];
+            UnlockedGroupsHandler.Instance.UnlockGroupGlobally(pick);
+            Plugin.LogInfo("Meteor blueprint decoded: " + pick.GetId() + " is open (" + (locked.Count - 1) + " locked modules left)");
+            try
+            {
+                Managers.GetManager<DisplayersHandler>()?.GetInformationsDisplayer()?.AddInformation(5f,
+                    Localization.GetLocalizedString("MeteorMagnet_BlueprintDecoded") + Readable.GetGroupName(pick),
+                    DataConfig.UiInformationsType.InInventory, pick.GetImage());
+            }
+            catch (Exception ex)
+            {
+                Plugin.LogWarning("Blueprint message failed: " + ex.Message);
+            }
+            return "decoded -> " + pick.GetId();
+        }
+
         static float FailChance(Magnet m, bool rare, Scanner s = null)
         {
             var chance = m.tier.failChance + (rare ? Content.RareFailBonus : 0f);
@@ -1942,7 +2013,7 @@ namespace MeteorMagnet
             foreach (var g in c.loot)
             {
                 // The meteor core is always kept, whatever the filter says.
-                var passes = c.magnet.filter.Count == 0 || c.magnet.filter.Contains(g.GetId()) || g.GetId() == Content.Core.id;
+                var passes = c.magnet.filter.Count == 0 || c.magnet.filter.Contains(g.GetId()) || g.GetId() == Content.Core.id || g.GetId() == Content.Blueprint.id;
                 var isFull = inv != null && inv.IsFull();
                 if (inv != null && !passes)
                 {

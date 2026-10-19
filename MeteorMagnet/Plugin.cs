@@ -43,6 +43,7 @@ namespace MeteorMagnet
         static ConfigEntry<string> displayBaseScreen;
         static ConfigEntry<float> beaconInterval;
         static ConfigEntry<float> coreDropChance;
+        static ConfigEntry<float> blueprintDropChance;
         static ConfigEntry<string> coreBaseItem;
         static ConfigEntry<int> coreTradeValue;
         static ConfigEntry<float> markerSeconds;
@@ -107,6 +108,7 @@ namespace MeteorMagnet
             }
             beaconInterval = Config.Bind(Content.Beacon.ConfigSection, "IntervalMinutes", Content.Beacon.intervalMinutes, "Как часто маяк вызывает метеоритный дождь, минут.");
             coreDropChance = Config.Bind("Meteor Core", "DropChance", Content.Core.dropChance, "Шанс, что пойманный метеорит оставит ядро (0.03 = 3%).");
+            blueprintDropChance = Config.Bind("Meteor Blueprint", "DropChance", Content.Blueprint.dropChance, "Шанс, что пойманный метеорит принесёт метеорный чертёж (0.02 = 2%).");
             coreTradeValue = Config.Bind("Meteor Core", "TradeValue", 2000, "Цена ядра в терратокенах для торговых ракет. 0 = не продаётся.");
             if (coreTradeValue.Value < 0)
             {
@@ -181,6 +183,7 @@ namespace MeteorMagnet
         internal static bool CaptureEffects => captureEffects.Value;
         internal static float BeaconIntervalSeconds => Mathf.Max(1f, beaconInterval.Value) * 60f;
         internal static float CoreDropChance => Mathf.Clamp01(coreDropChance.Value);
+        internal static float BlueprintDropChance => Mathf.Clamp01(blueprintDropChance.Value);
         internal static float MarkerSeconds => markerSeconds.Value;
         internal static bool RouteByFilter => routeByFilter.Value;
         internal static float EnergyUse(string id) => energyUse.TryGetValue(id, out var e) ? Mathf.Max(0f, e.Value) : 0f;
@@ -290,6 +293,7 @@ namespace MeteorMagnet
 
             // First: recipes of the beacon and the advanced modules use it.
             RegisterCore(___groupsData, existing);
+            RegisterBlueprint(___groupsData, existing);
 
             foreach (var def in Content.Buildings)
             {
@@ -340,7 +344,8 @@ namespace MeteorMagnet
                 }
                 var item = Instantiate(resonatorBase);
                 SetupClone(item, res.id, ___groupsData);
-                item.unlockingValue = 0f;
+                // Locked modules never open by terraformation, only by a decoded meteor blueprint.
+                item.unlockingValue = res.locked ? 1e30f : 0f;
                 item.craftableInList = [res.craftStation];
                 ___groupsData.Add(item);
                 Log("Registered resonator " + res.id);
@@ -383,6 +388,36 @@ namespace MeteorMagnet
             item.tradeValue = coreTradeValue.Value;
             groupsData.Add(item);
             LogInfo("Registered " + core.id + " (model of " + baseItem.id + ", trade value " + item.tradeValue + ")");
+        }
+
+        /// <summary>The meteor blueprint: a clone of the game's blueprint chip, not craftable, found only in captured meteors.</summary>
+        static void RegisterBlueprint(List<GroupData> groupsData, HashSet<string> existing)
+        {
+            var bp = Content.Blueprint;
+            if (existing.Contains(bp.id))
+            {
+                return;
+            }
+            GroupDataItem baseItem = null;
+            foreach (var id in bp.baseItemIds)
+            {
+                baseItem = groupsData.Find(g => g != null && g.id == id) as GroupDataItem;
+                if (baseItem != null)
+                {
+                    break;
+                }
+            }
+            if (baseItem == null)
+            {
+                logger.LogError("No base item for " + bp.id + ", meteor blueprints will not drop.");
+                return;
+            }
+            var item = Instantiate(baseItem);
+            SetupClone(item, bp.id, groupsData);
+            item.unlockingValue = 0f;
+            item.craftableInList = [];
+            groupsData.Add(item);
+            LogInfo("Registered " + bp.id + " (model of " + baseItem.id + ")");
         }
 
         static FieldInfo energyField;
@@ -580,7 +615,7 @@ namespace MeteorMagnet
         {
             var ids = Content.Buildings.Where(b => unlocks[b.id].Value <= 0f).Select(b => b.id)
                 .Concat(unlocks[Content.SatelliteRocket.id].Value <= 0f ? new[] { Content.SatelliteRocket.id } : Array.Empty<string>())
-                .Concat(Content.Resonators.Select(r => r.id));
+                .Concat(Content.Resonators.Where(r => !r.locked).Select(r => r.id));
             foreach (var id in ids)
             {
                 var group = GroupsHandler.GetGroupViaId(id);
@@ -614,6 +649,10 @@ namespace MeteorMagnet
                     dict["GROUP_NAME_" + r.id] = ru ? r.nameRu : r.nameEn;
                     dict["GROUP_DESC_" + r.id] = ru ? r.descRu : r.descEn;
                 }
+                dict["GROUP_NAME_" + Content.Blueprint.id] = ru ? Content.Blueprint.nameRu : Content.Blueprint.nameEn;
+                dict["GROUP_DESC_" + Content.Blueprint.id] = ru ? Content.Blueprint.descRu : Content.Blueprint.descEn;
+                dict["MeteorMagnet_BlueprintDecoded"] = ru ? "Чертёж расшифрован: " : "Blueprint decoded: ";
+                dict["MeteorMagnet_BlueprintFound"] = ru ? "Найден метеорный чертёж!" : "Meteor blueprint found!";
                 dict["GROUP_NAME_" + Content.Core.id] = ru ? Content.Core.nameRu : Content.Core.nameEn;
                 dict["GROUP_DESC_" + Content.Core.id] = ru ? Content.Core.descRu : Content.Core.descEn;
                 dict["MeteorMagnet_BeaconShower"] = ru ? "Метеорный маяк вызвал метеоритный дождь" : "The meteor beacon called a meteor shower";
