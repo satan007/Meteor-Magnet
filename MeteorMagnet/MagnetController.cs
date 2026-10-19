@@ -1392,6 +1392,7 @@ namespace MeteorMagnet
         static Magnet PickMagnet(Scanner scanner, Asteroid asteroid, Vector3 landing, out string why)
         {
             Magnet best = null;
+            var bestPriority = int.MaxValue;
             var bestRank = int.MaxValue;
             var bestDist = float.MaxValue;
             foreach (var m in scanner.network)
@@ -1400,10 +1401,13 @@ namespace MeteorMagnet
                 {
                     continue;
                 }
+                // Dominant / recessive modules come before the filter and the distance.
+                var priority = Priority(m, asteroid);
                 var rank = Plugin.RouteByFilter ? FilterRank(m, asteroid) : 0;
                 var dist = Vector3.Distance(m.position, landing);
-                if (rank < bestRank || (rank == bestRank && dist < bestDist))
+                if (priority < bestPriority || (priority == bestPriority && (rank < bestRank || (rank == bestRank && dist < bestDist))))
                 {
+                    bestPriority = priority;
                     bestRank = rank;
                     bestDist = dist;
                     best = m;
@@ -1415,7 +1419,7 @@ namespace MeteorMagnet
                 1 => "no filter, stores everything",
                 2 => "nearest free one, its filter does not want this meteor",
                 _ => "nearest free one",
-            };
+            } + (bestPriority == 0 ? ", DOMINANT" : bestPriority == 2 ? ", recessive (no other magnet was free)" : "");
             return best;
         }
 
@@ -1423,6 +1427,21 @@ namespace MeteorMagnet
         /// 0: the magnet's filter wants a resource of the meteor; 1: no filter (or no storage, a Mk1 pile);
         /// 2: the filter wants none of it, the loot would be dropped next to the magnet.
         /// </summary>
+        /// <summary>
+        /// 0: dominant (gets meteors first), 1: normal, 2: recessive (gets them last). Both modules cancel out;
+        /// at half strength the module works on every other meteor.
+        /// </summary>
+        static int Priority(Magnet m, Asteroid asteroid)
+        {
+            var dominant = m.effects.Contains(ResonatorEffect.Dominant);
+            var recessive = m.effects.Contains(ResonatorEffect.Recessive);
+            if (dominant == recessive || (m.Weakened && !Coin(asteroid)))
+            {
+                return 1;
+            }
+            return dominant ? 0 : 2;
+        }
+
         static int FilterRank(Magnet m, Asteroid asteroid)
         {
             if (!m.tier.hasStorage || m.filter.Count == 0)
@@ -1574,6 +1593,11 @@ namespace MeteorMagnet
             if (m.effects.Contains(ResonatorEffect.Stabilizer))
             {
                 chance *= m.Weaken(Content.StabilizerFailFactor);
+            }
+            if (m.effects.Contains(ResonatorEffect.Destroyer))
+            {
+                // The meteor is crushed in the field instead of held: it never slips (at half strength: half the chance).
+                chance *= 1f - m.Strength;
             }
             return Mathf.Max(0f, chance - RoverBonus(m) - RoverBonus(s));
         }
@@ -1759,6 +1783,10 @@ namespace MeteorMagnet
             if (magnet.effects.Contains(ResonatorEffect.LootBonus))
             {
                 mult *= magnet.Weaken(Content.LootBonusFactor);
+            }
+            if (magnet.effects.Contains(ResonatorEffect.Destroyer))
+            {
+                mult *= magnet.Weaken(Content.DestroyerLootFactor);
             }
             mult *= 1f + PlayerGear.MiningLootPerTier * magnet.Gear(GearType.MiningChip);
             var total = Mathf.Max(Plugin.MinLootPerMeteor, Mathf.RoundToInt(baseCount * mult));

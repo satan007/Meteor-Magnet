@@ -109,10 +109,23 @@ namespace MeteorMagnet
             r.lines.Add(T("Метеоритов одновременно: ", "Meteors at once: ") + m.CaptureSlots);
             r.lines.Add(T("Шанс срыва: ", "Fail chance: ") + Pct(FailChance(m, false)) + T(", у редких ", ", rare ") + Pct(FailChance(m, true)));
             var mult = (m.effects.Contains(ResonatorEffect.LootBonus) ? m.Weaken(Content.LootBonusFactor) : 1f)
+                * (m.effects.Contains(ResonatorEffect.Destroyer) ? m.Weaken(Content.DestroyerLootFactor) : 1f)
                 * (1f + PlayerGear.MiningLootPerTier * m.Gear(GearType.MiningChip));
             r.lines.Add(T("Ресурсы: ×", "Loot: x") + mult.ToString("0.##")
                 + (m.effects.Contains(ResonatorEffect.DuplicateChance) ? T(", удвоение ", ", doubling ") + Pct(Content.DuplicateChance * m.Strength) : "")
                 + (m.effects.Contains(ResonatorEffect.EveryResourceType) ? T(", каждый вид", ", every type") + (m.Weakened ? T(" (½ метеоритов)", " (½ of meteors)") : "") : ""));
+            var dominant = m.effects.Contains(ResonatorEffect.Dominant);
+            var recessive = m.effects.Contains(ResonatorEffect.Recessive);
+            if (dominant != recessive)
+            {
+                r.lines.Add((dominant ? T("Доминантный: получает метеориты первым", "Dominant: gets meteors first")
+                    : T("Рецессивный: получает метеориты последним", "Recessive: gets meteors last"))
+                    + (m.Weakened ? T(" (на половине метеоритов)", " (on half of the meteors)") : ""));
+            }
+            else if (dominant)
+            {
+                r.lines.Add(T("Доминантный и рецессивный гасят друг друга", "Dominant and recessive cancel out"));
+            }
             r.lines.Add(T("Шанс ядра метеорита: ", "Meteor core chance: ") + Pct(CoreChance(m)) + T(" (+ бонус сканера)", " (+ scanner bonus)"));
             if (m.effects.Contains(ResonatorEffect.Overflow))
             {

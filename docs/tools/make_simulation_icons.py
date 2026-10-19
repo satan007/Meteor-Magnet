@@ -81,3 +81,24 @@ def dial(g, cx, cy, c):
 
 cartridge(waves, (255, 160, 60, 255), 0.08).save(f"{out}/MeteorBeaconFrequency.png")
 cartridge(dial, (230, 205, 150, 255), 0.11, 0.5).save(f"{out}/MeteorBeaconCommon.png")
+
+
+def burst(g, cx, cy, c):
+    """Destroyer: a meteor breaking into shards."""
+    g.ellipse((cx - 9, cy - 9, cx + 9, cy + 9), outline=c, width=3)
+    for dx, dy in ((0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)):
+        g.line((cx + dx * 14, cy + dy * 14, cx + dx * 24, cy + dy * 24), fill=c, width=3)
+
+
+def arrow(up):
+    def draw(g, cx, cy, c):
+        s = -1 if up else 1
+        g.line((cx, cy - 26 * s, cx, cy + 24 * s), fill=c, width=5)
+        g.polygon([(cx, cy + 32 * s), (cx - 14, cy + 14 * s), (cx + 14, cy + 14 * s)], fill=c)
+        g.rectangle((cx - 16, cy - 32 * s - 3, cx + 16, cy - 32 * s + 3), fill=c)
+    return draw
+
+
+cartridge(burst, (255, 120, 40, 255), 0.06).save(f"{out}/MeteorDestroyer.png")
+cartridge(arrow(True), (110, 255, 140, 255), 0.33).save(f"{out}/MeteorDominant.png")
+cartridge(arrow(False), (140, 150, 255, 255), 0.66).save(f"{out}/MeteorRecessive.png")

@@ -147,6 +147,12 @@ namespace MeteorMagnet
         BeaconFrequency,
         /// <summary>Meteor beacon: calls only showers of common resources (rare ones cannot be targeted).</summary>
         BeaconCommon,
+        /// <summary>Magnet: crushes the meteor in the field - never slips, but less loot.</summary>
+        Destroyer,
+        /// <summary>Magnet: scanners hand meteors to it before any other magnet.</summary>
+        Dominant,
+        /// <summary>Magnet: scanners hand meteors to it only when no other magnet is free.</summary>
+        Recessive,
     }
 
     /// <summary>
@@ -234,6 +240,8 @@ namespace MeteorMagnet
         internal const float EmergencyStrength = 0.5f;
         /// <summary>Shower interval multiplier of a beacon with the frequency module.</summary>
         internal const float BeaconFrequencyFactor = 0.75f;
+        /// <summary>Loot multiplier of a magnet with the destroyer.</summary>
+        internal const float DestroyerLootFactor = 0.5f;
         /// <summary>Bonus of each working kind of equipment (core chance) or rover upgrade (lower fail chance), in absolute chance.</summary>
         internal const float SimulationBonusPerItem = 0.005f;
         /// <summary>How long a mark over an uncaught meteor stays, seconds.</summary>
@@ -617,6 +625,39 @@ namespace MeteorMagnet
                 nameEn = "Beacon Tuning Module",
                 descRu = "Модуль метеорного маяка. Маяк вызывает только дожди обычных ресурсов, без редких (суперсплав, осмий, кварцы). Настроить маяк на редкие нельзя.",
                 descEn = "Meteor beacon module. The beacon calls only showers of common resources, no rare ones (super alloy, osmium, quartzes). It cannot be tuned to rare ones.",
+            },
+            new Resonator
+            {
+                id = "MeteorDestroyer", planet = null, locked = true, forScanner = false,
+                effect = ResonatorEffect.Destroyer,
+                recipe = "MeteorCore,MeteorCore,Alloy,Alloy,Iridium,Osmium",
+                color = new Color(1f, 0.4f, 0.1f),
+                nameRu = "Модуль разрушителя",
+                nameEn = "Destroyer Module",
+                descRu = "Модуль гравитационного захвата. Поле не держит метеорит, а дробит его: захват никогда не срывается, но ресурсов вдвое меньше.",
+                descEn = "Meteor Magnet module. The field crushes the meteor instead of holding it: the capture never slips, but there is half the loot.",
+            },
+            new Resonator
+            {
+                id = "MeteorDominant", planet = null, locked = true, forScanner = false,
+                effect = ResonatorEffect.Dominant,
+                recipe = "MeteorCore,Silicon,Silicon,Cobalt,Aluminium",
+                color = new Color(0.3f, 1f, 0.5f),
+                nameRu = "Доминантный модуль",
+                nameEn = "Dominant Module",
+                descRu = "Модуль гравитационного захвата. Сканеры отдают метеориты этому захвату первым, раньше фильтров и расстояния.",
+                descEn = "Meteor Magnet module. Scanners hand meteors to this magnet first, before filters and distance.",
+            },
+            new Resonator
+            {
+                id = "MeteorRecessive", planet = null, locked = true, forScanner = false,
+                effect = ResonatorEffect.Recessive,
+                recipe = "MeteorCore,Silicon,Silicon,Cobalt,Iron",
+                color = new Color(0.5f, 0.5f, 1f),
+                nameRu = "Рецессивный модуль",
+                nameEn = "Recessive Module",
+                descRu = "Модуль гравитационного захвата. Этот захват получает метеорит, только когда все остальные заняты — запасной.",
+                descEn = "Meteor Magnet module. This magnet gets a meteor only when every other one is busy - a backup.",
             },
             new Resonator
             {
