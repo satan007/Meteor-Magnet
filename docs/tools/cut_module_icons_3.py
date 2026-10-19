@@ -47,7 +47,7 @@ for file, top, bottom, width, lefts, names in ROWS:
 # Meteor blueprint: the background (and the soft shadow, a smooth gradient) is flood-filled from the edges,
 # spreading only between neighbours of nearly the same colour; the stone and the metal have sharp edges.
 im = Image.open(f"{concept}/blueprint-chatgpt.webp").convert("RGB")
-crop = im.crop((215, 285, 1425, 925))
+crop = im.crop((200, 100, 1400, 930))
 w, h = crop.size
 px = crop.load()
 bgmask = [[False] * w for _ in range(h)]
