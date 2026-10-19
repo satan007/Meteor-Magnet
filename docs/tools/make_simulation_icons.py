@@ -102,3 +102,15 @@ def arrow(up):
 cartridge(burst, (255, 120, 40, 255), 0.06).save(f"{out}/MeteorDestroyer.png")
 cartridge(arrow(True), (110, 255, 140, 255), 0.33).save(f"{out}/MeteorDominant.png")
 cartridge(arrow(False), (140, 150, 255, 255), 0.66).save(f"{out}/MeteorRecessive.png")
+
+
+def egg(g, cx, cy, c):
+    """Achievement hunter: Halliday's egg with a key."""
+    g.ellipse((cx - 15, cy - 24, cx + 15, cy + 18), outline=c, width=3)
+    g.line((cx - 8, cy - 2, cx + 8, cy - 2), fill=c, width=3)
+    g.ellipse((cx - 6, cy + 22, cx + 2, cy + 30), outline=c, width=2)
+    g.line((cx + 2, cy + 26, cx + 16, cy + 26), fill=c, width=2)
+    g.line((cx + 12, cy + 26, cx + 12, cy + 31), fill=c, width=2)
+
+
+cartridge(egg, (255, 215, 60, 255), 0.13).save(f"{out}/MeteorAchievementHunter.png")

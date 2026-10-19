@@ -270,6 +270,8 @@ namespace MeteorMagnet
             /// <summary>When the meteor was first seen standing still (0 = moving).</summary>
             internal float stalledSince;
             internal bool accelerationRestored;
+            /// <summary>Achievement hunter: the meteor is pulled at the player instead of next to the magnet.</summary>
+            internal bool hunting;
         }
 
         /// <summary>A meteor a scanner is tracking: locking on, then waiting for a free magnet.</summary>
@@ -911,8 +913,15 @@ namespace MeteorMagnet
                 // Neutralize the impact: no resources on the ground, no damage.
                 var originalAcceleration = Plugin.LimitAcceleration(asteroid, CapturedAcceleration(magnet));
                 asteroid.numberOfResourceInDebris = 0;
-                asteroid.doDamage = false;
-                asteroid.shakeOnImpact = Plugin.ShakeOnImpact;
+                // Achievement hunter: the meteor goes for the player, keeps its damage and doubles its loot.
+                var hunting = magnet.effects.Contains(ResonatorEffect.AchievementHunter) && (!magnet.Weakened || Coin(asteroid));
+                if (hunting)
+                {
+                    // Only the resources: cores and blueprints are not doubled.
+                    loot.AddRange(loot.FindAll(g => g.GetId() != Content.Core.id && g.GetId() != Content.Blueprint.id));
+                }
+                asteroid.doDamage = hunting;
+                asteroid.shakeOnImpact = hunting || Plugin.ShakeOnImpact;
                 if (!Plugin.LeaveAsteroidBody)
                 {
                     asteroid.placeAsteroidBody = false;
@@ -929,12 +938,18 @@ namespace MeteorMagnet
                 {
                     magnet = magnet,
                     scanner = scanner,
-                    target = GroundPoint(magnet.position + away.normalized * Plugin.ImpactOffset),
+                    target = hunting ? PlayerPosition() : GroundPoint(magnet.position + away.normalized * Plugin.ImpactOffset),
                     pile = magnet.position + away.normalized * 3f + Vector3.up * 1.5f,
                     loot = loot,
                     capturedAt = Time.time,
                     originalAcceleration = originalAcceleration,
+                    hunting = hunting,
                 };
+                if (hunting)
+                {
+                    NotifyText("MeteorMagnet_ReadyPlayerOne", DataConfig.UiInformationsType.OutInventory);
+                    Plugin.Log("Achievement hunter: " + Describe(asteroid) + " goes for the player at " + capture.target + ", loot doubled to " + loot.Count);
+                }
                 if (magnet.Upgrade(RoverUpgradeType.Jetpack) > 0)
                 {
                     Deliver(capture);
@@ -1272,6 +1287,7 @@ namespace MeteorMagnet
                     + (ru ? ", сеть " : ", network ") + NetworkDemand().ToString("0.#")
                     + (ru ? " кВт, свободно " : " kW, free ") + FreeText(),
                 (ru ? "Ядер метеорита: " : "Meteor cores: ") + (MeteorStats.Resources.TryGetValue(Content.Core.id, out var cores) ? cores : 0),
+                (ru ? "Охота за ачивками: на волосок от метеорита " : "Achievement hunt: close calls ") + MeteorStats.CloseCalls + (ru ? " раз" : ""),
             };
             MeteorDisplay.Update(lines);
         }
@@ -1587,6 +1603,46 @@ namespace MeteorMagnet
             return "decoded -> " + pick.GetId();
         }
 
+        static Vector3 PlayerPosition()
+        {
+            var pc = Managers.GetManager<PlayersManager>()?.GetActivePlayerController();
+            return pc != null ? pc.transform.position : Vector3.zero;
+        }
+
+        /// <summary>
+        /// Achievement hunter: a meteor that lands close to the player counts as a close call. Like the hunt for
+        /// Halliday's egg in "Ready Player One": the copper, jade and crystal keys, then the egg itself.
+        /// </summary>
+        static void HunterImpact(Vector3 impact)
+        {
+            var dist = Vector3.Distance(impact, PlayerPosition());
+            Plugin.Log("Achievement hunter meteor hit " + dist.ToString("0") + " m from the player");
+            if (dist > Content.HunterCloseCallDistance)
+            {
+                return;
+            }
+            MeteorStats.AddCloseCall();
+            var n = MeteorStats.CloseCalls;
+            var key = n == Content.HunterKeys[0] ? "MeteorMagnet_CopperKey"
+                : n == Content.HunterKeys[1] ? "MeteorMagnet_JadeKey"
+                : n == Content.HunterKeys[2] ? "MeteorMagnet_CrystalKey"
+                : n == Content.HunterKeys[3] ? "MeteorMagnet_HallidayEgg"
+                : null;
+            Plugin.LogInfo("Close call #" + n + (key != null ? ": " + key : ""));
+            if (key != null)
+            {
+                try
+                {
+                    Managers.GetManager<DisplayersHandler>()?.GetInformationsDisplayer()
+                        ?.AddInformation(6f, Localization.GetLocalizedString(key), DataConfig.UiInformationsType.InInventory, null);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.LogWarning("Key message failed: " + ex.Message);
+                }
+            }
+        }
+
         static float FailChance(Magnet m, bool rare, Scanner s = null)
         {
             var chance = m.tier.failChance + (rare ? Content.RareFailBonus : 0f);
@@ -1847,6 +1903,11 @@ namespace MeteorMagnet
                 }
                 var t = asteroid.transform;
                 var pos = t.position;
+                if (c.hunting && !c.released)
+                {
+                    // Follows the player until the final dive.
+                    c.target = PlayerPosition();
+                }
                 var dir = c.target - pos;
                 var dist = dir.magnitude;
                 var prev = c.lastPosition;
@@ -1879,6 +1940,10 @@ namespace MeteorMagnet
                 {
                     c.unTunneled = true;
                     CaptureEffects.Flash(surface + Vector3.up * 2f, c.deflected ? Color.red : c.magnet.tier.color, 8f, 40f);
+                    if (c.hunting)
+                    {
+                        HunterImpact(surface);
+                    }
                     var hidden = 0;
                     foreach (var r in asteroid.GetComponentsInChildren<Renderer>())
                     {
@@ -2003,6 +2068,10 @@ namespace MeteorMagnet
                     if (kv.Value.deflected && !gone)
                     {
                         MeteorMarkers.Add(asteroid.transform.position, new Color(1f, 0.3f, 0.2f), "thrown-away " + Describe(asteroid) + " landed");
+                    }
+                    if (crashed && kv.Value.hunting && !kv.Value.unTunneled)
+                    {
+                        HunterImpact(asteroid.transform.position);
                     }
                     if (crashed)
                     {

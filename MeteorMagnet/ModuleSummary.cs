@@ -114,6 +114,30 @@ namespace MeteorMagnet
             r.lines.Add(T("Ресурсы: ×", "Loot: x") + mult.ToString("0.##")
                 + (m.effects.Contains(ResonatorEffect.DuplicateChance) ? T(", удвоение ", ", doubling ") + Pct(Content.DuplicateChance * m.Strength) : "")
                 + (m.effects.Contains(ResonatorEffect.EveryResourceType) ? T(", каждый вид", ", every type") + (m.Weakened ? T(" (½ метеоритов)", " (½ of meteors)") : "") : ""));
+            if (m.effects.Contains(ResonatorEffect.AchievementHunter))
+            {
+                r.lines.Add(T("Охотник за ачивками: метеориты летят в тебя, ресурсы ×2", "Achievement hunter: meteors come at you, loot x2")
+                    + (m.Weakened ? T(" (каждый второй)", " (every other one)") : ""));
+                r.lines.Add(T("На волосок от метеорита: ", "Close calls: ") + MeteorStats.CloseCalls
+                    + T(" (ключи на 1 / 10 / 25, пасхалка на 50)", " (keys at 1 / 10 / 25, the egg at 50)"));
+                var calls = MeteorStats.CloseCalls;
+                if (calls >= Content.HunterKeys[3])
+                {
+                    Cheer(m, r, "egg", T("Пасхалка Холлидея найдена!", "Halliday's egg found!"));
+                }
+                else if (calls >= Content.HunterKeys[2])
+                {
+                    Cheer(m, r, "crystal", T("Хрустальный ключ у тебя", "You hold the crystal key"));
+                }
+                else if (calls >= Content.HunterKeys[1])
+                {
+                    Cheer(m, r, "jade", T("Нефритовый ключ у тебя", "You hold the jade key"));
+                }
+                else if (calls >= Content.HunterKeys[0])
+                {
+                    Cheer(m, r, "copper", T("Медный ключ у тебя", "You hold the copper key"));
+                }
+            }
             var dominant = m.effects.Contains(ResonatorEffect.Dominant);
             var recessive = m.effects.Contains(ResonatorEffect.Recessive);
             if (dominant != recessive)

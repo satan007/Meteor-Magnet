@@ -153,6 +153,8 @@ namespace MeteorMagnet
         Dominant,
         /// <summary>Magnet: scanners hand meteors to it only when no other magnet is free.</summary>
         Recessive,
+        /// <summary>Magnet: captured meteors go for the player, keep their damage and double their loot.</summary>
+        AchievementHunter,
     }
 
     /// <summary>
@@ -242,6 +244,10 @@ namespace MeteorMagnet
         internal const float BeaconFrequencyFactor = 0.75f;
         /// <summary>Loot multiplier of a magnet with the destroyer.</summary>
         internal const float DestroyerLootFactor = 0.5f;
+        /// <summary>An achievement hunter meteor landing this close to the player is a close call.</summary>
+        internal const float HunterCloseCallDistance = 15f;
+        /// <summary>Close calls for the copper, jade and crystal keys and Halliday's egg.</summary>
+        internal static readonly int[] HunterKeys = [1, 10, 25, 50];
         /// <summary>Bonus of each working kind of equipment (core chance) or rover upgrade (lower fail chance), in absolute chance.</summary>
         internal const float SimulationBonusPerItem = 0.005f;
         /// <summary>How long a mark over an uncaught meteor stays, seconds.</summary>
@@ -658,6 +664,17 @@ namespace MeteorMagnet
                 nameEn = "Recessive Module",
                 descRu = "Модуль гравитационного захвата. Этот захват получает метеорит, только когда все остальные заняты — запасной.",
                 descEn = "Meteor Magnet module. This magnet gets a meteor only when every other one is busy - a backup.",
+            },
+            new Resonator
+            {
+                id = "MeteorAchievementHunter", planet = null, locked = true, forScanner = false,
+                effect = ResonatorEffect.AchievementHunter,
+                recipe = "MeteorCore,MeteorCore,MeteorCore,Alloy,Uranim,Silicon",
+                color = new Color(1f, 0.85f, 0.2f),
+                nameRu = "Охотник за ачивками",
+                nameEn = "Achievement Hunter",
+                descRu = "Модуль гравитационного захвата. «Первому игроку приготовиться!» Пойманные метеориты летят прямо в тебя и бьют по-настоящему, зато ресурсов вдвое больше. Выживи рядом с ударом — и собери медный, нефритовый и хрустальный ключи, а там и до пасхалки Холлидея недалеко.",
+                descEn = "Meteor Magnet module. \"Ready Player One!\" Captured meteors come straight at you and hit for real, but bring double loot. Survive close calls to collect the copper, jade and crystal keys - and Halliday's egg is not far away.",
             },
             new Resonator
             {

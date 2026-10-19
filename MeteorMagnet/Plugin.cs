@@ -651,6 +651,11 @@ namespace MeteorMagnet
                 }
                 dict["GROUP_NAME_" + Content.Blueprint.id] = ru ? Content.Blueprint.nameRu : Content.Blueprint.nameEn;
                 dict["GROUP_DESC_" + Content.Blueprint.id] = ru ? Content.Blueprint.descRu : Content.Blueprint.descEn;
+                dict["MeteorMagnet_ReadyPlayerOne"] = ru ? "Первому игроку приготовиться!" : "Ready Player One!";
+                dict["MeteorMagnet_CopperKey"] = ru ? "Медный ключ получен: первый метеорит прошёл впритирку!" : "Copper key: the first meteor missed you by a hair!";
+                dict["MeteorMagnet_JadeKey"] = ru ? "Нефритовый ключ получен: 10 метеоритов впритирку!" : "Jade key: 10 close calls!";
+                dict["MeteorMagnet_CrystalKey"] = ru ? "Хрустальный ключ получен: 25 метеоритов впритирку!" : "Crystal key: 25 close calls!";
+                dict["MeteorMagnet_HallidayEgg"] = ru ? "Пасхалка Холлидея найдена! 50 метеоритов — и ты всё ещё жив. Игра пройдена." : "You found Halliday's egg! 50 close calls and still alive. Game over - you win.";
                 dict["MeteorMagnet_BlueprintDecoded"] = ru ? "Чертёж расшифрован: " : "Blueprint decoded: ";
                 dict["MeteorMagnet_BlueprintFound"] = ru ? "Найден метеорный чертёж!" : "Meteor blueprint found!";
                 dict["GROUP_NAME_" + Content.Core.id] = ru ? Content.Core.nameRu : Content.Core.nameEn;

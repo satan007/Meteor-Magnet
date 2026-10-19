@@ -15,6 +15,8 @@ namespace MeteorMagnet
         internal static int Captured;
         internal static int Slipped;
         internal static int Deflected;
+        /// <summary>Achievement hunter meteors that came down next to the player.</summary>
+        internal static int CloseCalls;
         internal static readonly Dictionary<string, int> Resources = [];
 
         static WorldObjectsHandler loadedFor;
@@ -31,7 +33,7 @@ namespace MeteorMagnet
                 return;
             }
             loadedFor = handler;
-            Captured = Slipped = Deflected = 0;
+            Captured = Slipped = Deflected = CloseCalls = 0;
             Resources.Clear();
             var text = handler.GetWorldObjectViaId(StoreWorldObjectId)?.GetText() ?? "";
             foreach (var part in text.Split(';'))
@@ -47,6 +49,7 @@ namespace MeteorMagnet
                     case "captured": Captured = n; break;
                     case "slipped": Slipped = n; break;
                     case "deflected": Deflected = n; break;
+                    case "closecalls": CloseCalls = n; break;
                     default: Resources[key] = n; break;
                 }
             }
@@ -56,6 +59,7 @@ namespace MeteorMagnet
         internal static void AddCaptured() { EnsureLoaded(); Captured++; dirty = true; }
         internal static void AddSlipped() { EnsureLoaded(); Slipped++; dirty = true; }
         internal static void AddDeflected() { EnsureLoaded(); Deflected++; dirty = true; }
+        internal static void AddCloseCall() { EnsureLoaded(); CloseCalls++; dirty = true; }
 
         internal static void AddResources(List<Group> loot)
         {
@@ -87,7 +91,7 @@ namespace MeteorMagnet
                 wo = WorldObjectsHandler.Instance.CreateNewWorldObject(gr, StoreWorldObjectId);
                 wo.SetDontSaveMe(false);
             }
-            var parts = new List<string> { "captured=" + Captured, "slipped=" + Slipped, "deflected=" + Deflected };
+            var parts = new List<string> { "captured=" + Captured, "slipped=" + Slipped, "deflected=" + Deflected, "closecalls=" + CloseCalls };
             parts.AddRange(Resources.Select(kv => kv.Key + "=" + kv.Value));
             wo.SetText(string.Join(";", parts));
         }
