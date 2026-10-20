@@ -358,7 +358,7 @@ namespace MeteorMagnet
                 }
                 Nets.Add(net);
 
-                var state = "core " + (net.coreId ?? "none") + " (" + net.channels + " channels, radii x" + net.radiusFactor + "), drives " + net.drives.Count
+                var state = "core " + (net.coreId ?? "none") + " (" + Content.ChannelsText(net.channels) + " channels, radii x" + net.radiusFactor + "), drives " + net.drives.Count
                     + ", terminals " + net.terminals.Count + ", linked magnets/scanners " + net.magnets.Count + ", distributors " + net.hubs.Count + ", without a channel " + net.unserved.Count
                     + ", disks " + net.disks.Count + ", stored " + net.Stored + "/" + net.Capacity + ", draw " + net.Draw().ToString("0.#") + " kW";
                 if (!logged.TryGetValue(c.GetId(), out var last) || last != state)

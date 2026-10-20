@@ -539,8 +539,13 @@ namespace MeteorMagnet
 
         internal static readonly StorageDef[] StorageBuildings = [StorageController, StorageDrive, StorageTerminal, ModuleHub];
 
-        /// <summary>Channels double with every core tier: 2, 4, 8, 16, 32, 64.</summary>
-        internal static int ChannelsOfTier(int tier) => 2 << (tier - 1);
+        /// <summary>The top core tier has no channel limit.</summary>
+        internal const int UnlimitedTier = 10;
+
+        /// <summary>Channels double with every core tier: 2, 4, 8 ... 512; tier 10 is unlimited.</summary>
+        internal static int ChannelsOfTier(int tier) => tier >= UnlimitedTier ? int.MaxValue : 2 << (tier - 1);
+
+        internal static string ChannelsText(int channels) => channels == int.MaxValue ? "∞" : channels.ToString();
 
         /// <summary>
         /// The controller's draw grows only x1.5 per core tier while channels double, so one network with a bigger
@@ -555,9 +560,11 @@ namespace MeteorMagnet
             id = id, recipe = recipe, coreTier = tier, channels = ChannelsOfTier(tier), radiusFactor = radius, craftStation = station, unlockTi = unlockTi,
             baseItemIds = ["Iridium", "Osmium", "Rod-uranium"],
             nameRu = ru, nameEn = en,
-            descRu = descRu + " В контроллере хранилища: " + ChannelsOfTier(tier) + " каналов, радиусы связи сети ×" + radius.ToString("0.##")
+            descRu = descRu + " В контроллере хранилища: " + (tier >= UnlimitedTier ? "каналы без ограничений" : ChannelsOfTier(tier) + " каналов")
+                + ", радиусы связи сети ×" + radius.ToString("0.##")
                 + ", контроллер потребляет ×" + ControllerDrawFactor(tier).ToString("0.##") + ".",
-            descEn = descEn + " In a storage controller: " + ChannelsOfTier(tier) + " channels, network link radii x" + radius.ToString("0.##")
+            descEn = descEn + " In a storage controller: " + (tier >= UnlimitedTier ? "unlimited channels" : ChannelsOfTier(tier) + " channels")
+                + ", network link radii x" + radius.ToString("0.##")
                 + ", controller draw x" + ControllerDrawFactor(tier).ToString("0.##") + ".",
         };
 
@@ -609,6 +616,14 @@ namespace MeteorMagnet
                 "Ядро Большого взрыва", "Big Bang Core", t3,
                 "Восемь чёрных дыр — и всё начинается заново. Для креатива и тех, кто не стесняется читов.",
                 "Eight black holes - and everything starts over. For creative mode and those not shy of cheats."));
+            list.Add(CoreTier("MeteorCoreMultiverse", Times("MeteorCoreBigBang", 8) + ",PulsarQuartz", 9, 3.5f, 5e12f,
+                "Ядро мультивселенной", "Multiverse Core", t3,
+                "Восемь вселенных в одном кулаке. Даже читеру придётся постараться.",
+                "Eight universes in one fist. Even a cheater has to work for it."));
+            list.Add(CoreTier("MeteorCoreInfinity", Times("MeteorCoreMultiverse", 8) + ",CosmicQuartz", UnlimitedTier, 4f, 5e13f,
+                "Ядро бесконечности", "Infinity Core", t3,
+                "Восемь мультивселенных. Дальше считать нет смысла.",
+                "Eight multiverses. No point counting any further."));
 
             // Disk T1 opens together with the storage buildings, each next tier with the core it is made of.
             (int tier, string recipe, int capacity, int types, float energy, float unlockTi)[] disks =

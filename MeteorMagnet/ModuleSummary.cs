@@ -45,7 +45,7 @@ namespace MeteorMagnet
                 var r = new BuildingSummary { title = Readable.GetGroupName(net.controller.GetGroup()) };
                 var core = net.coreId != null ? GroupsHandler.GetGroupViaId(net.coreId) : null;
                 r.lines.Add(T("Ядро: ", "Core: ") + (core != null ? Readable.GetGroupName(core) : T("нет — сеть не работает", "none - the network is off")));
-                r.lines.Add(T("Каналы: ", "Channels: ") + net.Used + "/" + net.channels
+                r.lines.Add(T("Каналы: ", "Channels: ") + net.Used + "/" + Content.ChannelsText(net.channels)
                     + (net.unserved.Count > 0 ? T(", без канала: ", ", without a channel: ") + net.unserved.Count : ""));
                 r.lines.Add(T("Радиус связи: ", "Link radius: ") + (Content.LinkRadius * net.radiusFactor).ToString("0")
                     + T(" м (устройства ", " m (devices ") + (Content.DeviceLinkRadius * net.radiusFactor).ToString("0.#") + T(" м)", " m)"));
