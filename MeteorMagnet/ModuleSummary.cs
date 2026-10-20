@@ -40,6 +40,41 @@ namespace MeteorMagnet
             {
                 Summaries[m.wo.GetId()] = Summarize(m);
             }
+            foreach (var net in StorageNetwork.Nets)
+            {
+                var r = new BuildingSummary { title = Readable.GetGroupName(net.controller.GetGroup()) };
+                var core = net.coreId != null ? GroupsHandler.GetGroupViaId(net.coreId) : null;
+                r.lines.Add(T("Ядро: ", "Core: ") + (core != null ? Readable.GetGroupName(core) : T("нет — сеть не работает", "none - the network is off")));
+                r.lines.Add(T("Каналы: ", "Channels: ") + (net.drives.Count + net.terminals.Count) + "/" + net.channels
+                    + (net.unserved.Count > 0 ? T(", без канала: ", ", without a channel: ") + net.unserved.Count : ""));
+                r.lines.Add(T("Дисководов: ", "Drives: ") + net.drives.Count + T(", терминалов: ", ", terminals: ") + net.terminals.Count
+                    + T(", дисков: ", ", disks: ") + net.disks.Count);
+                r.lines.Add(T("Предметов: ", "Items: ") + net.Stored + "/" + net.Capacity);
+                r.lines.Add(T("Энергия: ", "Power: ") + net.Draw().ToString("0.#") + T(" кВт", " kW") + (powerOk ? "" : T(" — НЕ ХВАТАЕТ", " - NOT ENOUGH")));
+                Summaries[net.controller.GetId()] = r;
+                foreach (var drive in net.drives)
+                {
+                    var dr = new BuildingSummary { title = Readable.GetGroupName(drive.GetGroup()) };
+                    foreach (var d in net.disks)
+                    {
+                        if (ModuleSlots.Get(drive, Content.StorageDrive.slots)?.GetInsideWorldObjects().Contains(d.disk) == true)
+                        {
+                            dr.lines.Add(Readable.GetGroupName(d.disk.GetGroup()) + ": " + d.Count + "/" + d.def.capacity
+                                + T(", видов ", ", kinds ") + d.Kinds().Count + "/" + d.def.types);
+                        }
+                    }
+                    if (dr.lines.Count == 0)
+                    {
+                        dr.lines.Add(T("Дисков нет", "No disks"));
+                    }
+                    Summaries[drive.GetId()] = dr;
+                }
+                foreach (var drive in net.unserved)
+                {
+                    Summaries[drive.GetId()] = new BuildingSummary { title = Readable.GetGroupName(drive.GetGroup()) };
+                    Summaries[drive.GetId()].lines.Add(T("Нет свободного канала у контроллера — нужно ядро выше тиром", "No free controller channel - needs a higher tier core"));
+                }
+            }
             foreach (var b in beacons)
             {
                 var r = new BuildingSummary { title = Readable.GetGroupName(b.GetGroup()) };

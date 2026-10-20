@@ -293,6 +293,9 @@ namespace MeteorMagnet
         readonly List<Scanner> scanners = [];
         readonly List<(WorldObject wo, Vector3 position)> relays = [];
         readonly List<WorldObject> beacons = [];
+        readonly List<WorldObject> storageControllers = [];
+        readonly List<WorldObject> storageDrives = [];
+        readonly List<WorldObject> storageTerminals = [];
         // Slipped meteors, followed to the ground to mark where they land (last seen position).
         readonly Dictionary<Asteroid, Vector3> slippedWatch = [];
         // When the beacons call the next shower (NaN = no beacon yet).
@@ -338,6 +341,7 @@ namespace MeteorMagnet
                 meteorLines.Clear();
                 loggedUnseen.Clear();
                 MeteorDisplay.Reset();
+                StorageNetwork.Reset();
                 MeteorMarkers.Clear();
                 slippedWatch.Clear();
                 nextShower = float.NaN;
@@ -377,6 +381,9 @@ namespace MeteorMagnet
             scanners.Clear();
             relays.Clear();
             beacons.Clear();
+            storageControllers.Clear();
+            storageDrives.Clear();
+            storageTerminals.Clear();
             beaconEffects.Clear();
             beaconModules.Clear();
             displayCount = 0;
@@ -387,6 +394,19 @@ namespace MeteorMagnet
                 var tier = Content.TierOf(gid);
                 var scannerTier = Content.ScannerOf(gid);
                 var relay = Content.IsRelay(gid);
+                if (gid == Content.StorageController.id || gid == Content.StorageDrive.id || gid == Content.StorageTerminal.id)
+                {
+                    if (wo.GetIsPlaced() && (planetHash == 0 || wo.GetPlanetHash() == planetHash))
+                    {
+                        var list = gid == Content.StorageController.id ? storageControllers
+                            : gid == Content.StorageDrive.id ? storageDrives : storageTerminals;
+                        list.Add(wo);
+                        var def = gid == Content.StorageController.id ? Content.StorageController
+                            : gid == Content.StorageDrive.id ? Content.StorageDrive : Content.StorageTerminal;
+                        Decorate(wo, def.color, def.level, 0);
+                    }
+                    continue;
+                }
                 if (gid == Content.Display.id || gid == Content.Beacon.id)
                 {
                     if (wo.GetIsPlaced() && (planetHash == 0 || wo.GetPlanetHash() == planetHash))
@@ -472,6 +492,7 @@ namespace MeteorMagnet
                     Decorate(wo, tier.color, tier.level, magnet.LightTier);
                 }
             }
+            StorageNetwork.Build(storageControllers, storageDrives, storageTerminals, relays.ConvertAll(r => r.position));
             UpdateSummaries();
         }
 
@@ -716,6 +737,8 @@ namespace MeteorMagnet
 
         // Whether the base has power for the network; autonomous buildings (rover oxygen) work without it.
         static bool powerOk = true;
+
+        internal static bool NetworkPowered => powerOk;
 
         // When the world was loaded: the base's energy is not counted yet for the first seconds.
         float worldLoadedAt;
@@ -1253,6 +1276,7 @@ namespace MeteorMagnet
             demand += relays.Count * Plugin.EnergyUse(Content.Relay.id);
             demand += displayCount * Plugin.EnergyUse(Content.Display.id);
             demand += beacons.Count * Plugin.EnergyUse(Content.Beacon.id);
+            demand += StorageNetwork.Demand();
             return demand;
         }
 

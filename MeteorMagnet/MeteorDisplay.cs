@@ -38,6 +38,11 @@ namespace MeteorMagnet
         static bool ActionOpenUi_OnAction(ActionOpenUi __instance)
         {
             var wo = __instance.GetComponentInParent<WorldObjectAssociated>()?.GetWorldObject();
+            if (Plugin.Enabled && wo?.GetGroup()?.GetId() == Content.StorageTerminal.id)
+            {
+                StorageTerminal.Open(wo);
+                return false;
+            }
             if (!Plugin.Enabled || !IsDisplay(wo))
             {
                 return true;

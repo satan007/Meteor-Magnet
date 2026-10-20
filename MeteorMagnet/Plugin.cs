@@ -127,6 +127,11 @@ namespace MeteorMagnet
                 "Экипировка игрока определяется автоматически по id игры (Backpack3, OxygenTank2, MultiToolMineSpeed4...). Если что-то не определилось, впишите вручную: "
                 + "Id=Тип:Тир через запятую, типы: Backpack, Exoskeleton, Jetpack, Boots, OxygenTank, MiningChip, TorchChip, DeconstructChip, Compass. Пример: EquipmentIncrease2=Exoskeleton:2");
 
+            foreach (var item in Content.StorageItems)
+            {
+                recipes[item.id] = Config.Bind(item.ConfigSection, "Recipe", item.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются.");
+            }
+
             foreach (var res in Content.Resonators)
             {
                 var entry = Config.Bind(res.ConfigSection, "Recipe", res.recipe, "Рецепт модуля: id предметов через запятую. Неизвестные id пропускаются.");
@@ -164,6 +169,7 @@ namespace MeteorMagnet
             go.AddComponent<MagnetController>();
             go.AddComponent<FilterWindow>();
             go.AddComponent<MeteorMarkers>();
+            go.AddComponent<StorageTerminal>();
 
             Logger.LogInfo("Meteor Magnet loaded.");
         }
@@ -294,6 +300,7 @@ namespace MeteorMagnet
             // First: recipes of the beacon and the advanced modules use it.
             RegisterCore(___groupsData, existing);
             RegisterBlueprint(___groupsData, existing);
+            RegisterStorageItems(___groupsData, existing);
 
             foreach (var def in Content.Buildings)
             {
@@ -301,7 +308,7 @@ namespace MeteorMagnet
                 {
                     continue;
                 }
-                if (def == Content.Display)
+                if (def == Content.Display || def == Content.StorageTerminal)
                 {
                     def.baseGroupIds = DisplayBases(___groupsData);
                 }
@@ -388,6 +395,40 @@ namespace MeteorMagnet
             item.tradeValue = coreTradeValue.Value;
             groupsData.Add(item);
             LogInfo("Registered " + core.id + " (model of " + baseItem.id + ", trade value " + item.tradeValue + ")");
+        }
+
+        /// <summary>
+        /// Storage cores and disks, in order: each core tier's recipe uses the previous one.
+        /// </summary>
+        static void RegisterStorageItems(List<GroupData> groupsData, HashSet<string> existing)
+        {
+            foreach (var def in Content.StorageItems)
+            {
+                if (existing.Contains(def.id))
+                {
+                    continue;
+                }
+                GroupDataItem baseItem = null;
+                foreach (var id in def.baseItemIds)
+                {
+                    baseItem = groupsData.Find(g => g != null && g.id == id) as GroupDataItem;
+                    if (baseItem != null)
+                    {
+                        break;
+                    }
+                }
+                if (baseItem == null)
+                {
+                    logger.LogError("No base item for " + def.id + ", it will not be available.");
+                    continue;
+                }
+                var item = Instantiate(baseItem);
+                SetupClone(item, def.id, groupsData);
+                item.unlockingValue = 0f;
+                item.craftableInList = [def.craftStation];
+                groupsData.Add(item);
+                Log("Registered storage item " + def.id + " (" + item.recipeIngredients.Count + " ingredients)");
+            }
         }
 
         /// <summary>The meteor blueprint: a clone of the game's blueprint chip, not craftable, found only in captured meteors.</summary>
@@ -615,7 +656,8 @@ namespace MeteorMagnet
         {
             var ids = Content.Buildings.Where(b => unlocks[b.id].Value <= 0f).Select(b => b.id)
                 .Concat(unlocks[Content.SatelliteRocket.id].Value <= 0f ? new[] { Content.SatelliteRocket.id } : Array.Empty<string>())
-                .Concat(Content.Resonators.Where(r => !r.locked).Select(r => r.id));
+                .Concat(Content.Resonators.Where(r => !r.locked).Select(r => r.id))
+                .Concat(Content.StorageItems.Select(d => d.id));
             foreach (var id in ids)
             {
                 var group = GroupsHandler.GetGroupViaId(id);
@@ -662,6 +704,11 @@ namespace MeteorMagnet
                 dict["GROUP_DESC_" + Content.Core.id] = ru ? Content.Core.descRu : Content.Core.descEn;
                 dict["MeteorMagnet_BeaconShower"] = ru ? "Метеорный маяк вызвал метеоритный дождь" : "The meteor beacon called a meteor shower";
                 dict["MeteorMagnet_CoreFound"] = ru ? "Найдено ядро метеорита!" : "Meteor core found!";
+                foreach (var d in Content.StorageItems)
+                {
+                    dict["GROUP_NAME_" + d.id] = ru ? d.nameRu : d.nameEn;
+                    dict["GROUP_DESC_" + d.id] = ru ? d.descRu : d.descEn;
+                }
                 var sat = Content.SatelliteRocket;
                 dict["GROUP_NAME_" + sat.id] = ru ? sat.nameRu : sat.nameEn;
                 dict["GROUP_DESC_" + sat.id] = ru ? sat.descRu : sat.descEn;

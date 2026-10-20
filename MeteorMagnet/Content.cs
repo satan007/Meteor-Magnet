@@ -103,6 +103,36 @@ namespace MeteorMagnet
         internal override string ConfigSection => "Meteor Beacon";
     }
 
+    /// <summary>
+    /// A building of the item storage network (AE2-style): controller, drive or terminal.
+    /// </summary>
+    internal class StorageDef : BuildingDef
+    {
+        /// <summary>Slots of the building: the core of a controller, the disks of a drive.</summary>
+        internal int slots;
+        internal override string ConfigSection => "Storage " + id.Replace("MeteorStorage", "");
+    }
+
+    /// <summary>
+    /// A craftable item of the storage network: a tiered core (channels of a controller) or a storage disk.
+    /// </summary>
+    internal class StorageItemDef
+    {
+        internal string id;
+        internal string recipe;
+        internal DataConfig.CraftableIn craftStation = DataConfig.CraftableIn.CraftStationT2;
+        /// <summary>Item to clone (its model is used); first existing one wins.</summary>
+        internal string[] baseItemIds;
+        /// <summary>Cores: how many devices a controller with it can serve.</summary>
+        internal int channels;
+        /// <summary>Disks: how many items and how many kinds they hold, and their power draw.</summary>
+        internal int capacity, types;
+        internal float energy;
+        internal string nameRu, nameEn, descRu, descEn;
+        internal bool IsDisk => capacity > 0;
+        internal string ConfigSection => "Storage " + id.Replace("MeteorStorage", "").Replace("MeteorCore", "Core ");
+    }
+
     /// <summary>A rare item found only in captured meteors; ingredient of the advanced modules and the beacon.</summary>
     internal class CoreDef
     {
@@ -437,6 +467,134 @@ namespace MeteorMagnet
             descEn = "Data stored in the core of a captured meteor (2%). Put it into a scanner's or magnet's module slot: it is decoded and opens the recipe of a random locked module. With none left, it turns into a meteor core.",
         };
 
+        internal const float StorageLinkRadius = 40f;
+
+        internal static readonly StorageDef StorageController = new()
+        {
+            id = "MeteorStorageController", energy = 50f, level = 2, slots = 1,
+            baseGroupIds = ["Beacon", "Container1"],
+            recipe = "Alloy,Alloy,Iridium,Iridium,Silicon,Silicon,Silicon,Cobalt,Cobalt",
+            unlockTi = 1000000f,
+            color = new Color(0.2f, 0.9f, 1f),
+            nameRu = "Контроллер хранилища",
+            nameEn = "Storage Controller",
+            descRu = "Сердце сети хранения. В ячейку (клавиша K) кладётся ядро: его тир задаёт, сколько дисководов и терминалов сеть обслуживает. Устройства работают в 40 м от контроллера или реле.",
+            descEn = "Heart of the storage network. A core goes into its slot (K key): its tier sets how many drives and terminals the network serves. Devices work within 40 m of the controller or a relay.",
+        };
+
+        internal static readonly StorageDef StorageDrive = new()
+        {
+            id = "MeteorStorageDrive", energy = 10f, level = 2, slots = 4,
+            baseGroupIds = ["Container1", "Beacon"],
+            recipe = "Iron,Iron,Iron,Silicon,Silicon,Aluminium,Aluminium,Cobalt",
+            unlockTi = 1000000f,
+            color = new Color(0.4f, 0.7f, 1f),
+            nameRu = "Дисковод",
+            nameEn = "Disk Drive",
+            descRu = "4 ячейки под диски хранения (клавиша K). Занимает один канал контроллера.",
+            descEn = "4 slots for storage disks (K key). Takes one channel of the controller.",
+        };
+
+        internal static readonly StorageDef StorageTerminal = new()
+        {
+            id = "MeteorStorageTerminal", energy = 5f, level = 2, slots = 0,
+            // Filled at registration with the game's screens, like the display.
+            baseGroupIds = [],
+            recipe = "Iron,Iron,Silicon,Silicon,Silicon,Cobalt",
+            unlockTi = 1000000f,
+            color = new Color(0.3f, 1f, 0.8f),
+            nameRu = "Терминал хранилища",
+            nameEn = "Storage Terminal",
+            descRu = "Всё содержимое дисков сети одним списком, по одному значку на предмет. Воспользуйся им (или наведись и нажми N). Занимает один канал контроллера.",
+            descEn = "Everything on the network's disks in one list, one icon per item. Use it (or aim and press N). Takes one channel of the controller.",
+        };
+
+        internal static readonly StorageDef[] StorageBuildings = [StorageController, StorageDrive, StorageTerminal];
+
+        static StorageItemDef CoreTier(string id, string recipe, int channels, string ru, string en, DataConfig.CraftableIn station, string descRu, string descEn) => new()
+        {
+            id = id, recipe = recipe, channels = channels, craftStation = station,
+            baseItemIds = ["Iridium", "Osmium", "Rod-uranium"],
+            nameRu = ru, nameEn = en,
+            descRu = descRu + " В контроллере хранилища: " + channels + " каналов.",
+            descEn = descEn + " In a storage controller: " + channels + " channels.",
+        };
+
+        /// <summary>Planet cores (tier 5): each made with a resource found only on that planet.</summary>
+        internal static readonly (string planet, string resource, string ru, string en)[] PlanetCores =
+        [
+            ("Prime", "PulsarQuartz", "Ядро Прайма", "Prime Core"),
+            ("Humble", "Dolomite", "Ядро Хамбла", "Humble Core"),
+            ("Selenea", "Selenium", "Ядро Селении", "Selenea Core"),
+            ("Aqualis", "Phosphorus", "Ядро Аквалиса", "Aqualis Core"),
+            ("Toxicity", "ToxicGoo", "Ядро Токсисити", "Toxicity Core"),
+            ("Skeo", "Amber", "Ядро Скео", "Skeo Core"),
+        ];
+
+        static string Times(string id, int n) => string.Join(",", System.Linq.Enumerable.Repeat(id, n));
+
+        /// <summary>Cores in crafting order: each tier is 8 of the previous one plus one rare resource.</summary>
+        internal static readonly List<StorageItemDef> StorageItems = BuildStorageItems();
+
+        static List<StorageItemDef> BuildStorageItems()
+        {
+            var t2 = DataConfig.CraftableIn.CraftStationT2;
+            var t3 = DataConfig.CraftableIn.CraftStationT3;
+            var list = new List<StorageItemDef>
+            {
+                CoreTier("MeteorCore2", Times("MeteorCore", 8) + ",Osmium", 4, "Сжатое ядро", "Compressed Core", t2,
+                    "Восемь ядер метеорита, спрессованных вокруг осмия.", "Eight meteor cores pressed around osmium."),
+                CoreTier("MeteorCore3", Times("MeteorCore2", 8) + ",Rod-iridium", 6, "Плотное ядро", "Dense Core", t2,
+                    "Восемь сжатых ядер, стянутых иридиевым стержнем.", "Eight compressed cores bound by an iridium rod."),
+                CoreTier("MeteorCore4", Times("MeteorCore3", 8) + ",PulsarQuartz", 10, "Кристаллическое ядро", "Crystal Core", t3,
+                    "Восемь плотных ядер, выращенных в пульсарный кристалл.", "Eight dense cores grown into a pulsar crystal."),
+            };
+            foreach (var (planet, resource, ru, en) in PlanetCores)
+            {
+                list.Add(CoreTier("MeteorCore" + planet, Times("MeteorCore4", 8) + "," + resource, 16, ru, en, t3,
+                    "Ядро пятого тира, настроенное на планету " + planet + ". Шесть разных ядер планет собираются в сингулярность.",
+                    "A tier 5 core attuned to " + planet + ". Six different planet cores make a singularity."));
+            }
+            list.Add(CoreTier("MeteorCoreSingularity",
+                string.Join(",", System.Linq.Enumerable.Select(PlanetCores, p => "MeteorCore" + p.planet)) + ",CosmicQuartz,MagnetarQuartz",
+                32, "Ядро-сингулярность", "Singularity Core", t3,
+                "Ядра всех шести планет, сжатые в одну точку.", "The cores of all six planets crushed into one point."));
+
+            (int tier, string recipe, int capacity, int types, float energy)[] disks =
+            [
+                (1, "MeteorCore,Iron,Iron,Silicon,Silicon,Cobalt", 15, 3, 5f),
+                (2, "MeteorCore2,Aluminium,Aluminium,Silicon,Silicon,Iridium", 30, 5, 15f),
+                (3, "MeteorCore3,Alloy,Alloy,Silicon,Silicon,Osmium", 60, 8, 40f),
+                (4, "MeteorCore4,Alloy,Alloy,Alloy,Iridium,Iridium,PulsarQuartz", 120, 12, 100f),
+                (5, "MeteorCoreSingularity,Alloy,Alloy,Alloy,Osmium,Osmium,CosmicQuartz", 240, 16, 250f),
+            ];
+            foreach (var (tier, recipe, capacity, types, energy) in disks)
+            {
+                list.Add(new StorageItemDef
+                {
+                    id = "MeteorStorageDisk" + tier, recipe = recipe, capacity = capacity, types = types, energy = energy,
+                    craftStation = tier >= 4 ? t3 : t2,
+                    baseItemIds = ["Rod-uranium", "Iridium"],
+                    nameRu = "Диск хранения T" + tier,
+                    nameEn = "Storage Disk T" + tier,
+                    descRu = "Вставляется в дисковод. Хранит до " + capacity + " предметов не больше " + types + " видов. Вещи остаются на диске, если его вынуть. Потребляет " + energy + " кВт.",
+                    descEn = "Goes into a disk drive. Holds up to " + capacity + " items of at most " + types + " kinds. Items stay on the disk when it is taken out. Draws " + energy + " kW.",
+                });
+            }
+            return list;
+        }
+
+        static Dictionary<string, StorageItemDef> storageItemById;
+
+        internal static StorageItemDef StorageItemOf(string id)
+        {
+            storageItemById ??= BuildIndex(StorageItems.ToArray(), d => d.id);
+            return id != null && storageItemById.TryGetValue(id, out var d) ? d : null;
+        }
+
+        /// <summary>Channels a core gives a controller: the meteor core 2, then the crafted tiers.</summary>
+        internal static int ChannelsOf(string itemId) => itemId == Core.id ? 2 : StorageItemOf(itemId) is { IsDisk: false } d ? d.channels : 0;
+
         internal static IEnumerable<BuildingDef> Buildings
         {
             get
@@ -452,6 +610,10 @@ namespace MeteorMagnet
                 yield return Relay;
                 yield return Display;
                 yield return Beacon;
+                foreach (var s in StorageBuildings)
+                {
+                    yield return s;
+                }
             }
         }
 

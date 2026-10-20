@@ -115,9 +115,15 @@ namespace MeteorMagnet
             {
                 return;
             }
-            if (MeteorDisplay.IsDisplay(AimedWorldObject()))
+            var aimed = AimedWorldObject();
+            if (MeteorDisplay.IsDisplay(aimed))
             {
                 OpenStats();
+                return;
+            }
+            if (aimed?.GetGroup()?.GetId() == Content.StorageTerminal.id)
+            {
+                StorageTerminal.Open(aimed);
                 return;
             }
             var target = FindAimedFilterable();
@@ -140,7 +146,9 @@ namespace MeteorMagnet
             }
             var gid = wo.GetGroup()?.GetId();
             var slots = Content.TierOf(gid)?.moduleSlots ?? Content.ScannerOf(gid)?.moduleSlots
-                ?? (gid == Content.Beacon.id ? Content.Beacon.moduleSlots : 0);
+                ?? (gid == Content.Beacon.id ? Content.Beacon.moduleSlots
+                    : gid == Content.StorageController.id ? Content.StorageController.slots
+                    : gid == Content.StorageDrive.id ? Content.StorageDrive.slots : 0);
             var inv = ModuleSlots.Get(wo, slots);
             if (inv == null)
             {
@@ -168,7 +176,8 @@ namespace MeteorMagnet
         {
             var wo = AimedWorldObject();
             var gid = wo?.GetGroup()?.GetId();
-            return Content.TierOf(gid) != null || Content.ScannerOf(gid) != null || gid == Content.Beacon.id ? wo : null;
+            return Content.TierOf(gid) != null || Content.ScannerOf(gid) != null || gid == Content.Beacon.id
+                || gid == Content.StorageController.id || gid == Content.StorageDrive.id ? wo : null;
         }
 
         /// <summary>A Mk2/Mk3 magnet or any scanner under the crosshair.</summary>
