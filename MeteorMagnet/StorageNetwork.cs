@@ -128,6 +128,8 @@ namespace MeteorMagnet
         internal WorldObject controller;
         internal string coreId;
         internal int channels;
+        /// <summary>Multiplier of every link radius, from the core's tier.</summary>
+        internal float radiusFactor = 1f;
         internal readonly List<WorldObject> drives = [];
         internal readonly List<WorldObject> terminals = [];
         /// <summary>Magnets and scanners with the pulsar transmitter served by this network.</summary>
@@ -251,6 +253,7 @@ namespace MeteorMagnet
                     {
                         net.channels = ch;
                         net.coreId = id;
+                        net.radiusFactor = Content.RadiusFactorOf(id);
                     }
                 }
 
@@ -259,12 +262,12 @@ namespace MeteorMagnet
                 // Each node remembers the node it was reached from, for the channel spirals.
                 var nodes = new List<(int id, Vector3 pos, float radius, int parent, WorldObject device)>
                 {
-                    (c.GetId(), c.GetPosition(), Content.LinkRadius, -1, null),
+                    (c.GetId(), c.GetPosition(), Content.LinkRadius * net.radiusFactor, -1, null),
                 };
                 var candidates = new List<(WorldObject wo, Vector3 pos, float radius, int kind)>();
                 foreach (var r in relays)
                 {
-                    candidates.Add((r.wo, r.position, Content.LinkRadius, -1));
+                    candidates.Add((r.wo, r.position, Content.LinkRadius * net.radiusFactor, -1));
                 }
                 void AddDevices(List<WorldObject> list, int kind)
                 {
@@ -272,7 +275,7 @@ namespace MeteorMagnet
                     {
                         if (!taken.Contains(d))
                         {
-                            candidates.Add((d, d.GetPosition(), Content.DeviceLinkRadius, kind));
+                            candidates.Add((d, d.GetPosition(), Content.DeviceLinkRadius * net.radiusFactor, kind));
                         }
                     }
                 }
@@ -354,7 +357,7 @@ namespace MeteorMagnet
                 }
                 Nets.Add(net);
 
-                var state = "core " + (net.coreId ?? "none") + " (" + net.channels + " channels), drives " + net.drives.Count
+                var state = "core " + (net.coreId ?? "none") + " (" + net.channels + " channels, radii x" + net.radiusFactor + "), drives " + net.drives.Count
                     + ", terminals " + net.terminals.Count + ", linked magnets/scanners " + net.magnets.Count + ", distributors " + net.hubs.Count + ", without a channel " + net.unserved.Count
                     + ", disks " + net.disks.Count + ", stored " + net.Stored + "/" + net.Capacity + ", draw " + net.Draw().ToString("0.#") + " kW";
                 if (!logged.TryGetValue(c.GetId(), out var last) || last != state)

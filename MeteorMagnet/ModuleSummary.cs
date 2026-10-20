@@ -47,6 +47,8 @@ namespace MeteorMagnet
                 r.lines.Add(T("Ядро: ", "Core: ") + (core != null ? Readable.GetGroupName(core) : T("нет — сеть не работает", "none - the network is off")));
                 r.lines.Add(T("Каналы: ", "Channels: ") + net.Used + "/" + net.channels
                     + (net.unserved.Count > 0 ? T(", без канала: ", ", without a channel: ") + net.unserved.Count : ""));
+                r.lines.Add(T("Радиус связи: ", "Link radius: ") + (Content.LinkRadius * net.radiusFactor).ToString("0")
+                    + T(" м (устройства ", " m (devices ") + (Content.DeviceLinkRadius * net.radiusFactor).ToString("0.#") + T(" м)", " m)"));
                 r.lines.Add(T("Дисководов: ", "Drives: ") + net.drives.Count + T(", терминалов: ", ", terminals: ") + net.terminals.Count
                     + T(", дисков: ", ", disks: ") + net.disks.Count);
                 r.lines.Add(T("Предметов: ", "Items: ") + net.Stored + "/" + net.Capacity);
