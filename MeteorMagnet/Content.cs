@@ -128,6 +128,8 @@ namespace MeteorMagnet
         /// <summary>Disks: how many items and how many kinds they hold, and their power draw.</summary>
         internal int capacity, types;
         internal float energy;
+        /// <summary>Terraformation (Ti) at which the recipe opens: with the storage buildings, later tiers a bit later.</summary>
+        internal float unlockTi;
         internal string nameRu, nameEn, descRu, descEn;
         internal bool IsDisk => capacity > 0;
         internal string ConfigSection => "Storage " + id.Replace("MeteorStorage", "").Replace("MeteorCore", "Core ");
@@ -511,9 +513,9 @@ namespace MeteorMagnet
 
         internal static readonly StorageDef[] StorageBuildings = [StorageController, StorageDrive, StorageTerminal];
 
-        static StorageItemDef CoreTier(string id, string recipe, int channels, string ru, string en, DataConfig.CraftableIn station, string descRu, string descEn) => new()
+        static StorageItemDef CoreTier(string id, string recipe, int channels, float unlockTi, string ru, string en, DataConfig.CraftableIn station, string descRu, string descEn) => new()
         {
-            id = id, recipe = recipe, channels = channels, craftStation = station,
+            id = id, recipe = recipe, channels = channels, craftStation = station, unlockTi = unlockTi,
             baseItemIds = ["Iridium", "Osmium", "Rod-uranium"],
             nameRu = ru, nameEn = en,
             descRu = descRu + " В контроллере хранилища: " + channels + " каналов.",
@@ -542,37 +544,38 @@ namespace MeteorMagnet
             var t3 = DataConfig.CraftableIn.CraftStationT3;
             var list = new List<StorageItemDef>
             {
-                CoreTier("MeteorCore2", Times("MeteorCore", 8) + ",Osmium", 4, "Сжатое ядро", "Compressed Core", t2,
+                CoreTier("MeteorCore2", Times("MeteorCore", 8) + ",Osmium", 4, 1e6f, "Сжатое ядро", "Compressed Core", t2,
                     "Восемь ядер метеорита, спрессованных вокруг осмия.", "Eight meteor cores pressed around osmium."),
-                CoreTier("MeteorCore3", Times("MeteorCore2", 8) + ",Rod-iridium", 6, "Плотное ядро", "Dense Core", t2,
+                CoreTier("MeteorCore3", Times("MeteorCore2", 8) + ",Rod-iridium", 6, 5e6f, "Плотное ядро", "Dense Core", t2,
                     "Восемь сжатых ядер, стянутых иридиевым стержнем.", "Eight compressed cores bound by an iridium rod."),
-                CoreTier("MeteorCore4", Times("MeteorCore3", 8) + ",PulsarQuartz", 10, "Кристаллическое ядро", "Crystal Core", t3,
+                CoreTier("MeteorCore4", Times("MeteorCore3", 8) + ",PulsarQuartz", 10, 5e7f, "Кристаллическое ядро", "Crystal Core", t3,
                     "Восемь плотных ядер, выращенных в пульсарный кристалл.", "Eight dense cores grown into a pulsar crystal."),
             };
             foreach (var (planet, resource, ru, en) in PlanetCores)
             {
-                list.Add(CoreTier("MeteorCore" + planet, Times("MeteorCore4", 8) + "," + resource, 16, ru, en, t3,
+                list.Add(CoreTier("MeteorCore" + planet, Times("MeteorCore4", 8) + "," + resource, 16, 5e8f, ru, en, t3,
                     "Ядро пятого тира, настроенное на планету " + planet + ". Шесть разных ядер планет собираются в сингулярность.",
                     "A tier 5 core attuned to " + planet + ". Six different planet cores make a singularity."));
             }
             list.Add(CoreTier("MeteorCoreSingularity",
                 string.Join(",", System.Linq.Enumerable.Select(PlanetCores, p => "MeteorCore" + p.planet)) + ",CosmicQuartz,MagnetarQuartz",
-                32, "Ядро-сингулярность", "Singularity Core", t3,
+                32, 5e9f, "Ядро-сингулярность", "Singularity Core", t3,
                 "Ядра всех шести планет, сжатые в одну точку.", "The cores of all six planets crushed into one point."));
 
-            (int tier, string recipe, int capacity, int types, float energy)[] disks =
+            // Disk T1 opens together with the storage buildings, each next tier with the core it is made of.
+            (int tier, string recipe, int capacity, int types, float energy, float unlockTi)[] disks =
             [
-                (1, "MeteorCore,Iron,Iron,Silicon,Silicon,Cobalt", 15, 3, 5f),
-                (2, "MeteorCore2,Aluminium,Aluminium,Silicon,Silicon,Iridium", 30, 5, 15f),
-                (3, "MeteorCore3,Alloy,Alloy,Silicon,Silicon,Osmium", 60, 8, 40f),
-                (4, "MeteorCore4,Alloy,Alloy,Alloy,Iridium,Iridium,PulsarQuartz", 120, 12, 100f),
-                (5, "MeteorCoreSingularity,Alloy,Alloy,Alloy,Osmium,Osmium,CosmicQuartz", 240, 16, 250f),
+                (1, "MeteorCore,Iron,Iron,Silicon,Silicon,Cobalt", 15, 3, 5f, 1e6f),
+                (2, "MeteorCore2,Aluminium,Aluminium,Silicon,Silicon,Iridium", 30, 5, 15f, 5e6f),
+                (3, "MeteorCore3,Alloy,Alloy,Silicon,Silicon,Osmium", 60, 8, 40f, 5e7f),
+                (4, "MeteorCore4,Alloy,Alloy,Alloy,Iridium,Iridium,PulsarQuartz", 120, 12, 100f, 5e8f),
+                (5, "MeteorCoreSingularity,Alloy,Alloy,Alloy,Osmium,Osmium,CosmicQuartz", 240, 16, 250f, 5e9f),
             ];
-            foreach (var (tier, recipe, capacity, types, energy) in disks)
+            foreach (var (tier, recipe, capacity, types, energy, unlockTi) in disks)
             {
                 list.Add(new StorageItemDef
                 {
-                    id = "MeteorStorageDisk" + tier, recipe = recipe, capacity = capacity, types = types, energy = energy,
+                    id = "MeteorStorageDisk" + tier, recipe = recipe, capacity = capacity, types = types, energy = energy, unlockTi = unlockTi,
                     craftStation = tier >= 4 ? t3 : t2,
                     baseItemIds = ["Rod-uranium", "Iridium"],
                     nameRu = "Диск хранения T" + tier,

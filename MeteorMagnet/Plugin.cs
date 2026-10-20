@@ -130,6 +130,7 @@ namespace MeteorMagnet
             foreach (var item in Content.StorageItems)
             {
                 recipes[item.id] = Config.Bind(item.ConfigSection, "Recipe", item.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются.");
+                unlocks[item.id] = Config.Bind(item.ConfigSection, "UnlockAtTerraformation", item.unlockTi, "Индекс терраформации (Ti), при котором открывается рецепт. 0 = доступно сразу.");
             }
 
             foreach (var res in Content.Resonators)
@@ -424,7 +425,7 @@ namespace MeteorMagnet
                 }
                 var item = Instantiate(baseItem);
                 SetupClone(item, def.id, groupsData);
-                item.unlockingValue = 0f;
+                item.unlockingValue = unlocks[def.id].Value;
                 item.craftableInList = [def.craftStation];
                 groupsData.Add(item);
                 Log("Registered storage item " + def.id + " (" + item.recipeIngredients.Count + " ingredients)");
@@ -657,7 +658,7 @@ namespace MeteorMagnet
             var ids = Content.Buildings.Where(b => unlocks[b.id].Value <= 0f).Select(b => b.id)
                 .Concat(unlocks[Content.SatelliteRocket.id].Value <= 0f ? new[] { Content.SatelliteRocket.id } : Array.Empty<string>())
                 .Concat(Content.Resonators.Where(r => !r.locked).Select(r => r.id))
-                .Concat(Content.StorageItems.Select(d => d.id));
+                .Concat(Content.StorageItems.Where(d => unlocks[d.id].Value <= 0f).Select(d => d.id));
             foreach (var id in ids)
             {
                 var group = GroupsHandler.GetGroupViaId(id);
