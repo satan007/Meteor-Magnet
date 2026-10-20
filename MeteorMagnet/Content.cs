@@ -127,6 +127,8 @@ namespace MeteorMagnet
         internal int channels;
         /// <summary>Cores: multiplier of every link radius of the network (controller, relays, devices).</summary>
         internal float radiusFactor = 1f;
+        /// <summary>Cores: tier (the meteor core is 1). Channels double and the controller's draw grows x1.5 per tier.</summary>
+        internal int coreTier;
         /// <summary>Disks: how many items and how many kinds they hold, and their power draw.</summary>
         internal int capacity, types;
         internal float energy;
@@ -537,13 +539,26 @@ namespace MeteorMagnet
 
         internal static readonly StorageDef[] StorageBuildings = [StorageController, StorageDrive, StorageTerminal, ModuleHub];
 
-        static StorageItemDef CoreTier(string id, string recipe, int channels, float radius, float unlockTi, string ru, string en, DataConfig.CraftableIn station, string descRu, string descEn) => new()
+        /// <summary>Channels double with every core tier: 2, 4, 8, 16, 32, 64.</summary>
+        internal static int ChannelsOfTier(int tier) => 2 << (tier - 1);
+
+        /// <summary>
+        /// The controller's draw grows only x1.5 per core tier while channels double, so one network with a bigger
+        /// core is cheaper than two smaller networks.
+        /// </summary>
+        internal const float CoreEnergyStep = 1.5f;
+
+        internal static float ControllerDrawFactor(int tier) => Mathf.Pow(CoreEnergyStep, Mathf.Max(0, tier - 1));
+
+        static StorageItemDef CoreTier(string id, string recipe, int tier, float radius, float unlockTi, string ru, string en, DataConfig.CraftableIn station, string descRu, string descEn) => new()
         {
-            id = id, recipe = recipe, channels = channels, radiusFactor = radius, craftStation = station, unlockTi = unlockTi,
+            id = id, recipe = recipe, coreTier = tier, channels = ChannelsOfTier(tier), radiusFactor = radius, craftStation = station, unlockTi = unlockTi,
             baseItemIds = ["Iridium", "Osmium", "Rod-uranium"],
             nameRu = ru, nameEn = en,
-            descRu = descRu + " В контроллере хранилища: " + channels + " каналов, радиусы связи сети ×" + radius.ToString("0.##") + ".",
-            descEn = descEn + " In a storage controller: " + channels + " channels, network link radii x" + radius.ToString("0.##") + ".",
+            descRu = descRu + " В контроллере хранилища: " + ChannelsOfTier(tier) + " каналов, радиусы связи сети ×" + radius.ToString("0.##")
+                + ", контроллер потребляет ×" + ControllerDrawFactor(tier).ToString("0.##") + ".",
+            descEn = descEn + " In a storage controller: " + ChannelsOfTier(tier) + " channels, network link radii x" + radius.ToString("0.##")
+                + ", controller draw x" + ControllerDrawFactor(tier).ToString("0.##") + ".",
         };
 
         /// <summary>Planet cores (tier 5): each made with a resource found only on that planet.</summary>
@@ -568,22 +583,22 @@ namespace MeteorMagnet
             var t3 = DataConfig.CraftableIn.CraftStationT3;
             var list = new List<StorageItemDef>
             {
-                CoreTier("MeteorCore2", Times("MeteorCore", 8) + ",Osmium", 4, 1.1f, 1e6f, "Сжатое ядро", "Compressed Core", t2,
+                CoreTier("MeteorCore2", Times("MeteorCore", 8) + ",Osmium", 2, 1.1f, 1e6f, "Сжатое ядро", "Compressed Core", t2,
                     "Восемь ядер метеорита, спрессованных вокруг осмия.", "Eight meteor cores pressed around osmium."),
-                CoreTier("MeteorCore3", Times("MeteorCore2", 8) + ",Rod-iridium", 6, 1.2f, 5e6f, "Плотное ядро", "Dense Core", t2,
+                CoreTier("MeteorCore3", Times("MeteorCore2", 8) + ",Rod-iridium", 3, 1.2f, 5e6f, "Плотное ядро", "Dense Core", t2,
                     "Восемь сжатых ядер, стянутых иридиевым стержнем.", "Eight compressed cores bound by an iridium rod."),
-                CoreTier("MeteorCore4", Times("MeteorCore3", 8) + ",PulsarQuartz", 10, 1.35f, 5e7f, "Кристаллическое ядро", "Crystal Core", t3,
+                CoreTier("MeteorCore4", Times("MeteorCore3", 8) + ",PulsarQuartz", 4, 1.35f, 5e7f, "Кристаллическое ядро", "Crystal Core", t3,
                     "Восемь плотных ядер, выращенных в пульсарный кристалл.", "Eight dense cores grown into a pulsar crystal."),
             };
             foreach (var (planet, resource, ru, en) in PlanetCores)
             {
-                list.Add(CoreTier("MeteorCore" + planet, Times("MeteorCore4", 8) + "," + resource, 16, 1.5f, 5e8f, ru, en, t3,
+                list.Add(CoreTier("MeteorCore" + planet, Times("MeteorCore4", 8) + "," + resource, 5, 1.5f, 5e8f, ru, en, t3,
                     "Ядро пятого тира, настроенное на планету " + planet + ". Шесть разных ядер планет собираются в сингулярность.",
                     "A tier 5 core attuned to " + planet + ". Six different planet cores make a singularity."));
             }
             list.Add(CoreTier("MeteorCoreSingularity",
                 string.Join(",", System.Linq.Enumerable.Select(PlanetCores, p => "MeteorCore" + p.planet)) + ",CosmicQuartz,MagnetarQuartz",
-                32, 2f, 5e9f, "Ядро-сингулярность", "Singularity Core", t3,
+                6, 2f, 5e9f, "Ядро-сингулярность", "Singularity Core", t3,
                 "Ядра всех шести планет, сжатые в одну точку.", "The cores of all six planets crushed into one point."));
 
             // Disk T1 opens together with the storage buildings, each next tier with the core it is made of.
@@ -621,6 +636,9 @@ namespace MeteorMagnet
 
         /// <summary>Channels a core gives a controller: the meteor core 2, then the crafted tiers.</summary>
         internal static float RadiusFactorOf(string itemId) => StorageItemOf(itemId) is { IsDisk: false } d ? d.radiusFactor : 1f;
+
+        /// <summary>Tier of a core: the meteor core 1, crafted cores 2..6, anything else 0.</summary>
+        internal static int CoreTierOf(string itemId) => itemId == Core.id ? 1 : StorageItemOf(itemId) is { IsDisk: false } d ? d.coreTier : 0;
 
         internal static int ChannelsOf(string itemId) => itemId == Core.id ? 2 : StorageItemOf(itemId) is { IsDisk: false } d ? d.channels : 0;
 

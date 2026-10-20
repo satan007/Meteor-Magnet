@@ -161,7 +161,8 @@ namespace MeteorMagnet
 
         internal float Draw()
         {
-            var draw = Plugin.EnergyUse(Content.StorageController.id)
+            // The controller's own draw grows x1.5 per core tier (channels double).
+            var draw = Plugin.EnergyUse(Content.StorageController.id) * Content.ControllerDrawFactor(Content.CoreTierOf(coreId))
                 + drives.Count * Plugin.EnergyUse(Content.StorageDrive.id)
                 + terminals.Count * Plugin.EnergyUse(Content.StorageTerminal.id)
                 + hubs.Count * Plugin.EnergyUse(Content.ModuleHub.id);
