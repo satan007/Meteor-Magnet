@@ -159,7 +159,7 @@ namespace MeteorMagnet
 
     /// <summary>
     /// A module crafted from resources that exist on a single planet. Put it into the storage of the
-    /// building it is made for (a scanner or a Mk2/Mk3 magnet); elsewhere it does nothing.
+    /// building it is made for (a scanner or a magnet); elsewhere it does nothing.
     /// Each kind counts once per building.
     /// </summary>
     internal class Resonator
@@ -288,8 +288,8 @@ namespace MeteorMagnet
                 color = new Color(0.55f, 0.25f, 1f),
                 nameRu = "Гравитационный захват Mk2",
                 nameEn = "Meteor Magnet Mk2",
-                descRu = "Притягивает метеориты, которые ему передаёт сканер, по 2 за раз. Хранилище размером с малый сундук, фильтр по клавише. Модули захвата ставятся в отдельные ячейки (клавиша K).",
-                descEn = "Pulls in meteors handed over by a scanner, 2 at a time. Small chest storage, filter on a key. Magnet modules go into separate slots (K key).",
+                descRu = "Притягивает метеориты, которые ему передаёт сканер, по 2 за раз. Хранилище размером с малый сундук, фильтр — клавиша N. Модули захвата ставятся в отдельные ячейки (клавиша K).",
+                descEn = "Pulls in meteors handed over by a scanner, 2 at a time. Small chest storage, filter on the N key. Magnet modules go into separate slots (K key).",
             },
             new MagnetTier
             {
@@ -304,8 +304,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.3f, 0.75f),
                 nameRu = "Гравитационный захват Mk3",
                 nameEn = "Meteor Magnet Mk3",
-                descRu = "Притягивает метеориты, которые ему передаёт сканер, по 3 за раз. Хранилище размером с большой сундук, фильтр по клавише. Модули захвата ставятся в отдельные ячейки (клавиша K).",
-                descEn = "Pulls in meteors handed over by a scanner, 3 at a time. Big chest storage, filter on a key. Magnet modules go into separate slots (K key).",
+                descRu = "Притягивает метеориты, которые ему передаёт сканер, по 3 за раз. Хранилище размером с большой сундук, фильтр — клавиша N. Модули захвата ставятся в отдельные ячейки (клавиша K).",
+                descEn = "Pulls in meteors handed over by a scanner, 3 at a time. Big chest storage, filter on the N key. Magnet modules go into separate slots (K key).",
             },
         ];
 
@@ -326,8 +326,8 @@ namespace MeteorMagnet
                 color = new Color(0.3f, 1f, 0.9f),
                 nameRu = "Метеорный сканер Mk1",
                 nameEn = "Meteor Scanner Mk1",
-                descRu = "Замечает метеориты в радиусе 300 м, ведёт 2 цели и передаёт их захватам в радиусе связи 60 м. Редкие метеориты не видит. Модули сканера ставятся в отдельные ячейки (клавиша K).",
-                descEn = "Detects meteors within 300 m, tracks 2 targets and hands them to magnets within a 60 m link radius. Does not see rare meteors. Scanner modules go into separate slots (K key).",
+                descRu = "Замечает метеориты в радиусе 300 м, ведёт 2 цели и передаёт их захватам в радиусе связи 60 м. Редкие метеориты не видит. Фильтр метеоритов — клавиша N, модули — отдельные ячейки (клавиша K).",
+                descEn = "Detects meteors within 300 m, tracks 2 targets and hands them to magnets within a 60 m link radius. Does not see rare meteors. Meteor filter on the N key, modules in separate slots (K key).",
             },
             new ScannerTier
             {
@@ -344,8 +344,8 @@ namespace MeteorMagnet
                 color = new Color(0.3f, 0.85f, 1f),
                 nameRu = "Метеорный сканер Mk2",
                 nameEn = "Meteor Scanner Mk2",
-                descRu = "Замечает метеориты в радиусе 800 м, ведёт 4 цели и передаёт их захватам в радиусе связи 100 м. Модули сканера ставятся в отдельные ячейки (клавиша K).",
-                descEn = "Detects meteors within 800 m, tracks 4 targets and hands them to magnets within a 100 m link radius. Scanner modules go into separate slots (K key).",
+                descRu = "Замечает метеориты в радиусе 800 м, ведёт 4 цели и передаёт их захватам в радиусе связи 100 м. Фильтр метеоритов — клавиша N, модули — отдельные ячейки (клавиша K).",
+                descEn = "Detects meteors within 800 m, tracks 4 targets and hands them to magnets within a 100 m link radius. Meteor filter on the N key, modules in separate slots (K key).",
             },
             new ScannerTier
             {
@@ -363,8 +363,8 @@ namespace MeteorMagnet
                 color = new Color(0.6f, 0.95f, 1f),
                 nameRu = "Метеорный сканер Mk3",
                 nameEn = "Meteor Scanner Mk3",
-                descRu = "Замечает метеориты в радиусе 2000 м, ведёт 6 целей и передаёт их захватам в радиусе связи 150 м. С модулем космической связи и спутником на орбите видит всю планету. Модули сканера ставятся в отдельные ячейки (клавиша K).",
-                descEn = "Detects meteors within 2000 m, tracks 6 targets and hands them to magnets within a 150 m link radius. With a Space Link module and a satellite in orbit it sees the whole planet. Scanner modules go into separate slots (K key).",
+                descRu = "Замечает метеориты в радиусе 2000 м, ведёт 6 целей и передаёт их захватам в радиусе связи 150 м. С модулем космической связи и спутником на орбите видит всю планету. Фильтр метеоритов — клавиша N, модули — отдельные ячейки (клавиша K).",
+                descEn = "Detects meteors within 2000 m, tracks 6 targets and hands them to magnets within a 150 m link radius. With a Space Link module and a satellite in orbit it sees the whole planet. Meteor filter on the N key, modules in separate slots (K key).",
             },
         ];
 
@@ -392,8 +392,8 @@ namespace MeteorMagnet
             color = new Color(1f, 0.9f, 0.4f),
             nameRu = "Дисплей метеорной сети",
             nameEn = "Meteor Network Display",
-            descRu = "Настенный экран: сколько метеоритов поймано, сорвалось и отброшено, сколько ресурсов собрано, загрузка сканеров и захватов, есть ли энергия.",
-            descEn = "Wall screen: meteors captured, slipped and thrown away, resources collected, scanner and magnet load, power state.",
+            descRu = "Экран сети: воспользуйся им (или наведись и нажми N) — откроется статистика: сколько метеоритов поймано, сорвалось и отброшено, сколько ресурсов и ядер собрано, загрузка сканеров и захватов, энергия сети.",
+            descEn = "Network screen: use it (or aim and press N) to open the statistics: meteors captured, slipped and thrown away, resources and cores collected, scanner and magnet load, network power.",
         };
 
         internal static readonly BeaconDef Beacon = new()
@@ -418,8 +418,8 @@ namespace MeteorMagnet
             dropChance = 0.03f,
             nameRu = "Ядро метеорита",
             nameEn = "Meteor Core",
-            descRu = "Плотное ядро, которое иногда остаётся от пойманного метеорита (3%). Нужно для всех модулей и метеорного маяка. Всегда попадает в хранилище захвата, мимо фильтра.",
-            descEn = "A dense core sometimes left by a captured meteor (3%). Needed for every module and the meteor beacon. Always goes to the magnet's storage, past the filter.",
+            descRu = "Плотное ядро, которое иногда остаётся от пойманного метеорита (3%). Нужно для всех модулей и метеорного маяка. Всегда попадает в хранилище захвата мимо фильтра (у Mk1 — в кучку). Продаётся торговой ракетой.",
+            descEn = "A dense core sometimes left by a captured meteor (3%). Needed for every module and the meteor beacon. Always goes to the magnet's storage past the filter (Mk1: to the pile). Sells by trade rocket.",
         };
 
         /// <summary>
@@ -478,8 +478,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.6f, 0.2f),
                 nameRu = "Доломитовый концентратор",
                 nameEn = "Dolomite Concentrator",
-                descRu = "Модуль захвата Mk2/Mk3. +50% ресурсов с каждого метеорита.",
-                descEn = "Magnet Mk2/Mk3 module. +50% resources from every meteor.",
+                descRu = "Модуль гравитационного захвата. +50% ресурсов с каждого метеорита.",
+                descEn = "Meteor Magnet module. +50% resources from every meteor.",
             },
             new Resonator
             {
@@ -502,8 +502,8 @@ namespace MeteorMagnet
                 color = new Color(0.7f, 1f, 0.1f),
                 nameRu = "Токсичный катализатор",
                 nameEn = "Toxic Catalyst",
-                descRu = "Модуль захвата Mk2/Mk3. Каждый пойманный ресурс с шансом 25% удваивается.",
-                descEn = "Magnet Mk2/Mk3 module. Every captured resource has a 25% chance to be doubled.",
+                descRu = "Модуль гравитационного захвата. Каждый пойманный ресурс с шансом 25% удваивается.",
+                descEn = "Meteor Magnet module. Every captured resource has a 25% chance to be doubled.",
             },
             new Resonator
             {
@@ -514,8 +514,8 @@ namespace MeteorMagnet
                 color = new Color(0.2f, 0.5f, 1f),
                 nameRu = "Фосфорный гидроперелив",
                 nameEn = "Phosphorus Overflow",
-                descRu = "Модуль захвата Mk2/Mk3. Что не влезло в хранилище или не прошло фильтр, перетекает в другой захват той же сети: сначала в тот, чей фильтр это хочет, потом в захват без фильтра.",
-                descEn = "Magnet Mk2/Mk3 module. What does not fit or does not pass the filter flows to another magnet of the same network: first one whose filter wants it, then one without a filter.",
+                descRu = "Модуль гравитационного захвата. Что не влезло в хранилище, не прошло фильтр или (у Mk1) упало бы кучкой, перетекает в другой захват той же сети: сначала в тот, чей фильтр это хочет, потом в захват без фильтра.",
+                descEn = "Meteor Magnet module. What does not fit, does not pass the filter or (Mk1) would drop in a pile flows to another magnet of the same network: first one whose filter wants it, then one without a filter.",
             },
             new Resonator
             {
@@ -526,8 +526,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.75f, 0f),
                 nameRu = "Янтарный сепаратор",
                 nameEn = "Amber Separator",
-                descRu = "Модуль захвата Mk2/Mk3. С каждого метеорита гарантированно приходит хотя бы по одному ресурсу каждого вида, который он несёт.",
-                descEn = "Magnet Mk2/Mk3 module. Every meteor gives at least one of each resource type it carries.",
+                descRu = "Модуль гравитационного захвата. С каждого метеорита гарантированно приходит хотя бы по одному ресурсу каждого вида, который он несёт.",
+                descEn = "Meteor Magnet module. Every meteor gives at least one of each resource type it carries.",
             },
             new Resonator
             {
@@ -673,8 +673,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.85f, 0.2f),
                 nameRu = "Охотник за ачивками",
                 nameEn = "Achievement Hunter",
-                descRu = "Модуль гравитационного захвата. «Первому игроку приготовиться!» Пойманные метеориты летят прямо в тебя и бьют по-настоящему, зато ресурсов вдвое больше. Выживи рядом с ударом — и собери медный, нефритовый и хрустальный ключи, а там и до пасхалки Холлидея недалеко.",
-                descEn = "Meteor Magnet module. \"Ready Player One!\" Captured meteors come straight at you and hit for real, but bring double loot. Survive close calls to collect the copper, jade and crystal keys - and Halliday's egg is not far away.",
+                descRu = "Модуль гравитационного захвата. «Первому игроку приготовиться!» Пойманные метеориты летят прямо в тебя, зато ресурсов вдвое больше (ядра и чертежи не удваиваются). Удар ближе 15 м от тебя — «на волосок»: за 1, 10 и 25 таких — медный, нефритовый и хрустальный ключи, за 50 — пасхалка Холлидея.",
+                descEn = "Meteor Magnet module. \"Ready Player One!\" Captured meteors come straight at you, but bring double resources (cores and blueprints are not doubled). An impact within 15 m of you is a close call: 1, 10 and 25 of them give the copper, jade and crystal keys, 50 - Halliday's egg.",
             },
             new Resonator
             {

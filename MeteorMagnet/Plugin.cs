@@ -655,7 +655,7 @@ namespace MeteorMagnet
                 dict["MeteorMagnet_CopperKey"] = ru ? "Медный ключ получен: первый метеорит прошёл впритирку!" : "Copper key: the first meteor missed you by a hair!";
                 dict["MeteorMagnet_JadeKey"] = ru ? "Нефритовый ключ получен: 10 метеоритов впритирку!" : "Jade key: 10 close calls!";
                 dict["MeteorMagnet_CrystalKey"] = ru ? "Хрустальный ключ получен: 25 метеоритов впритирку!" : "Crystal key: 25 close calls!";
-                dict["MeteorMagnet_HallidayEgg"] = ru ? "Пасхалка Холлидея найдена! 50 метеоритов — и ты всё ещё жив. Игра пройдена." : "You found Halliday's egg! 50 close calls and still alive. Game over - you win.";
+                dict["MeteorMagnet_HallidayEgg"] = ru ? "Пасхалка Холлидея найдена! 50 метеоритов впритирку. Игра пройдена." : "You found Halliday's egg! 50 close calls. Game over - you win.";
                 dict["MeteorMagnet_BlueprintDecoded"] = ru ? "Чертёж расшифрован: " : "Blueprint decoded: ";
                 dict["MeteorMagnet_BlueprintFound"] = ru ? "Найден метеорный чертёж!" : "Meteor blueprint found!";
                 dict["GROUP_NAME_" + Content.Core.id] = ru ? Content.Core.nameRu : Content.Core.nameEn;
@@ -675,16 +675,16 @@ namespace MeteorMagnet
                 dict["MeteorMagnet_NoScanner"] = ru ? "Гравитационный захват не в зоне связи сканера или реле — он не будет работать" : "Meteor Magnet is outside any scanner or relay link area - it will not work";
                 dict["MeteorMagnet_FilterTitle"] = ru ? "Фильтр гравитационного захвата" : "Meteor Magnet filter";
                 dict["MeteorMagnet_FilterHint"] = ru
-                    ? "Отмеченные ресурсы идут в хранилище, остальные падают рядом. Ничего не отмечено — в хранилище идёт всё."
-                    : "Checked resources go to storage, the rest drop nearby. Nothing checked = everything goes to storage.";
+                    ? "Отмеченные ресурсы идут в хранилище, остальные падают рядом (с модулями — в сундуки или другие захваты). Ничего не отмечено — в хранилище идёт всё. Ядра и чертежи проходят всегда."
+                    : "Checked resources go to storage, the rest drop nearby (with modules: to chests or other magnets). Nothing checked = everything goes to storage. Cores and blueprints always pass.";
                 dict["MeteorMagnet_FilterAll"] = ru ? "Всё в хранилище" : "Store everything";
                 dict["MeteorMagnet_FilterClose"] = ru ? "Закрыть" : "Close";
                 dict["MeteorMagnet_ScannerFilterTitle"] = ru ? "Фильтр метеорного сканера" : "Meteor Scanner filter";
                 dict["MeteorMagnet_ScannerFilterHint"] = ru
-                    ? "Сканер ведёт только метеориты, в которых есть хотя бы один отмеченный ресурс. Ничего не отмечено — ведёт все."
-                    : "The scanner tracks only meteors carrying at least one checked resource. Nothing checked = tracks all.";
+                    ? "Сканер ведёт только метеориты, в которых есть хотя бы один отмеченный ресурс (пустые — нет). Ничего не отмечено — ведёт все."
+                    : "The scanner tracks only meteors carrying at least one checked resource (no barren ones). Nothing checked = tracks all.";
                 dict["MeteorMagnet_ScannerFilterAll"] = ru ? "Вести все" : "Track all";
-                dict["MeteorMagnet_NoPower"] = ru ? "Метеорной сети не хватает энергии — сканеры отключены" : "The meteor network lacks power - scanners are off";
+                dict["MeteorMagnet_NoPower"] = ru ? "Метеорной сети не хватает энергии — сеть отключена, работают только автономные постройки" : "The meteor network lacks power - it is off, only autonomous buildings work";
                 dict["MeteorMagnet_DisplayTitle"] = ru ? "Метеорная сеть" : "Meteor network";
                 dict["MeteorMagnet_FilterEmpty"] = ru ? "На этой планете метеориты с ресурсами не найдены." : "No resource meteors found on this planet.";
             }
