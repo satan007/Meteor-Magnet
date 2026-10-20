@@ -600,6 +600,15 @@ namespace MeteorMagnet
                 string.Join(",", System.Linq.Enumerable.Select(PlanetCores, p => "MeteorCore" + p.planet)) + ",CosmicQuartz,MagnetarQuartz",
                 6, 2f, 5e9f, "Ядро-сингулярность", "Singularity Core", t3,
                 "Ядра всех шести планет, сжатые в одну точку.", "The cores of all six planets crushed into one point."));
+            // Beyond any honest playthrough: for creative mode and cheaters.
+            list.Add(CoreTier("MeteorCoreBlackHole", Times("MeteorCoreSingularity", 8) + ",QuasarQuartz", 7, 2.5f, 5e10f,
+                "Ядро чёрной дыры", "Black Hole Core", t3,
+                "Восемь сингулярностей, схлопнувшихся в одну. Честно скрафтить его почти нереально.",
+                "Eight singularities collapsed into one. Next to impossible to craft honestly."));
+            list.Add(CoreTier("MeteorCoreBigBang", Times("MeteorCoreBlackHole", 8) + ",SolarQuartz", 8, 3f, 5e11f,
+                "Ядро Большого взрыва", "Big Bang Core", t3,
+                "Восемь чёрных дыр — и всё начинается заново. Для креатива и тех, кто не стесняется читов.",
+                "Eight black holes - and everything starts over. For creative mode and those not shy of cheats."));
 
             // Disk T1 opens together with the storage buildings, each next tier with the core it is made of.
             (int tier, string recipe, int capacity, int types, float energy, float unlockTi)[] disks =
