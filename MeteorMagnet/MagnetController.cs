@@ -385,6 +385,7 @@ namespace MeteorMagnet
                 loggedUnseen.Clear();
                 MeteorDisplay.Reset();
                 StorageNetwork.Reset();
+                channelLines.Clear();
                 MeteorMarkers.Clear();
                 slippedWatch.Clear();
                 nextShower = float.NaN;
@@ -544,7 +545,8 @@ namespace MeteorMagnet
                     linked.Add(b.wo);
                 }
             }
-            StorageNetwork.Build(storageControllers, storageDrives, storageTerminals, linked, storageHubs, relays.ConvertAll(r => r.position));
+            StorageNetwork.Build(storageControllers, storageDrives, storageTerminals, linked, storageHubs, relays);
+            DrawChannels();
             ApplyNetworkModules(planetHash);
             FlushBuffers();
             UpdateSummaries();
@@ -2328,6 +2330,27 @@ namespace MeteorMagnet
             return true;
         }
 
+        readonly ChannelLines channelLines = new();
+
+        /// <summary>The storage network's links with one spiral per channel running through them.</summary>
+        void DrawChannels()
+        {
+            if (!Plugin.ShowSignalLines)
+            {
+                channelLines.Clear();
+                return;
+            }
+            channelLines.Begin();
+            foreach (var net in StorageNetwork.Nets)
+            {
+                foreach (var l in net.links)
+                {
+                    channelLines.Link(l.fromId, l.from, l.toId, l.to, l.channels, Content.StorageController.color);
+                }
+            }
+            channelLines.End();
+        }
+
         IEnumerable<Building> AllBuildings()
         {
             foreach (var s in scanners)
@@ -2343,7 +2366,7 @@ namespace MeteorMagnet
         /// <summary>
         /// Module distributor: linked scanners and magnets get the modules stored on the network's disks into their
         /// free slots, one of each kind they do not have yet. A module on a disk serves every such building.
-        /// The pulsar transmitter and the emergency expansion are not lent (they change the network link and the slots).
+        /// The pulsar transmitter is not lent (it is the link itself).
         /// </summary>
         void ApplyNetworkModules(int planetHash)
         {
@@ -2428,8 +2451,7 @@ namespace MeteorMagnet
             if (res != null)
             {
                 var fits = !res.forBeacon && (res.forBoth || res.forScanner == scanner);
-                return fits && res.effect != ResonatorEffect.StorageLink && res.effect != ResonatorEffect.EmergencyExpansion
-                    ? "res:" + res.effect : null;
+                return fits && res.effect != ResonatorEffect.StorageLink ? "res:" + res.effect : null;
             }
             if (RoverUpgrades.TryGet(id, out var rt, out var rtier))
             {

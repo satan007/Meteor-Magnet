@@ -137,6 +137,20 @@ namespace MeteorMagnet
         /// <summary>Devices in reach that got no channel (farthest first lose out).</summary>
         internal readonly List<WorldObject> unserved = [];
         internal readonly List<NetworkDisk> disks = [];
+        /// <summary>Links of the network (controller -> relay -> device) with the channels running through each.</summary>
+        internal readonly List<(int fromId, Vector3 from, int toId, Vector3 to, int channels)> links = [];
+
+        internal IEnumerable<WorldObject> Served()
+        {
+            foreach (var l in new[] { drives, terminals, magnets, hubs })
+            {
+                foreach (var wo in l)
+                {
+                    yield return wo;
+                }
+            }
+        }
+
         /// <summary>Channels taken: every device but the controller.</summary>
         internal int Used => drives.Count + terminals.Count + magnets.Count + hubs.Count;
         internal int Capacity { get { var c = 0; foreach (var d in disks) { c += d.def.capacity; } return c; } }
@@ -196,6 +210,23 @@ namespace MeteorMagnet
             return null;
         }
 
+        /// <summary>The nearest node whose circle covers the point, or -1.</summary>
+        static int Nearest(List<(int id, Vector3 pos, int parent)> nodes, Vector3 p)
+        {
+            var best = -1;
+            var bestDist = float.MaxValue;
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var d = Flat(nodes[i].pos, p);
+                if (d <= Content.StorageLinkRadius && d < bestDist)
+                {
+                    best = i;
+                    bestDist = d;
+                }
+            }
+            return best;
+        }
+
         static float Flat(Vector3 a, Vector3 b)
         {
             var d = a - b;
@@ -204,7 +235,7 @@ namespace MeteorMagnet
         }
 
         internal static void Build(List<WorldObject> controllers, List<WorldObject> drives, List<WorldObject> terminals, List<WorldObject> magnets,
-            List<WorldObject> hubs, List<Vector3> relays)
+            List<WorldObject> hubs, List<(WorldObject wo, Vector3 position)> relays)
         {
             Nets.Clear();
             var taken = new HashSet<WorldObject>();
@@ -223,7 +254,9 @@ namespace MeteorMagnet
                     }
                 }
 
-                // Reach: the controller's circle, grown through chains of meteor relays.
+                // Reach: the controller's circle, grown through chains of meteor relays. Each relay remembers the node
+                // it was reached from, so the links form a tree (for the channel spirals).
+                var nodes = new List<(int id, Vector3 pos, int parent)> { (c.GetId(), c.GetPosition(), -1) };
                 var area = new List<Vector3> { c.GetPosition() };
                 var joined = new bool[relays.Count];
                 bool grew;
@@ -232,10 +265,12 @@ namespace MeteorMagnet
                     grew = false;
                     for (int i = 0; i < relays.Count; i++)
                     {
-                        if (!joined[i] && area.Exists(p => Flat(p, relays[i]) <= Content.StorageLinkRadius))
+                        var parent = joined[i] ? -1 : Nearest(nodes, relays[i].position);
+                        if (parent >= 0)
                         {
                             joined[i] = true;
-                            area.Add(relays[i]);
+                            nodes.Add((relays[i].wo.GetId(), relays[i].position, parent));
+                            area.Add(relays[i].position);
                             grew = true;
                         }
                     }
@@ -287,6 +322,27 @@ namespace MeteorMagnet
                             net.disks.Add(new NetworkDisk { disk = item, def = def, inventory = inv });
                         }
                     }
+                }
+                // Channels through every link: each served device adds one to its link and to every link up to the controller.
+                var through = new Dictionary<int, int>();
+                foreach (var device in net.Served())
+                {
+                    var at = Nearest(nodes, device.GetPosition());
+                    if (at < 0)
+                    {
+                        continue;
+                    }
+                    net.links.Add((nodes[at].id, nodes[at].pos, device.GetId(), device.GetPosition(), 1));
+                    for (var n = at; nodes[n].parent >= 0; n = nodes[n].parent)
+                    {
+                        through[n] = through.TryGetValue(n, out var k) ? k + 1 : 1;
+                    }
+                }
+                foreach (var kv in through)
+                {
+                    var child = nodes[kv.Key];
+                    var parent = nodes[child.parent];
+                    net.links.Add((parent.id, parent.pos, child.id, child.pos, kv.Value));
                 }
                 Nets.Add(net);
 
