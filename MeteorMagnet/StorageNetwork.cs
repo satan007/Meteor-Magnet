@@ -159,8 +159,15 @@ namespace MeteorMagnet
         internal int Stored { get { var c = 0; foreach (var d in disks) { c += d.Count; } return c; } }
         internal int KindSlots { get { var c = 0; foreach (var d in disks) { c += d.def.types; } return c; } }
 
+        /// <summary>The infinity core powers the whole network: nothing on it draws power.</summary>
+        internal bool SelfPowered => Content.SelfPowered(Content.CoreTierOf(coreId));
+
         internal float Draw()
         {
+            if (SelfPowered)
+            {
+                return 0f;
+            }
             // The controller's own draw grows x1.5 per core tier (channels double).
             var draw = Plugin.EnergyUse(Content.StorageController.id) * Content.ControllerDrawFactor(Content.CoreTierOf(coreId))
                 + drives.Count * Plugin.EnergyUse(Content.StorageDrive.id)

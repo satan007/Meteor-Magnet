@@ -548,12 +548,27 @@ namespace MeteorMagnet
         internal static string ChannelsText(int channels) => channels == int.MaxValue ? "∞" : channels.ToString();
 
         /// <summary>
-        /// The controller's draw grows only x1.5 per core tier while channels double, so one network with a bigger
-        /// core is cheaper than two smaller networks.
+        /// Growth of the controller's draw from the previous core tier, by tier: x1.5 up to tier 5 while channels
+        /// double (one network with a bigger core is cheaper than two smaller ones), then less and less.
         /// </summary>
-        internal const float CoreEnergyStep = 1.5f;
+        static readonly float[] coreEnergySteps = [1f, 1f, 1.5f, 1.5f, 1.5f, 1.5f, 1.4f, 1.3f, 1.2f, 1.1f];
 
-        internal static float ControllerDrawFactor(int tier) => Mathf.Pow(CoreEnergyStep, Mathf.Max(0, tier - 1));
+        /// <summary>The infinity core powers its whole network itself: the controller and every device draw nothing.</summary>
+        internal static bool SelfPowered(int tier) => tier >= UnlimitedTier;
+
+        internal static float ControllerDrawFactor(int tier)
+        {
+            if (SelfPowered(tier))
+            {
+                return 0f;
+            }
+            var f = 1f;
+            for (int t = 2; t <= tier && t < coreEnergySteps.Length; t++)
+            {
+                f *= coreEnergySteps[t];
+            }
+            return f;
+        }
 
         static StorageItemDef CoreTier(string id, string recipe, int tier, float radius, float unlockTi, string ru, string en, DataConfig.CraftableIn station, string descRu, string descEn) => new()
         {
@@ -562,10 +577,12 @@ namespace MeteorMagnet
             nameRu = ru, nameEn = en,
             descRu = descRu + " В контроллере хранилища: " + (tier >= UnlimitedTier ? "каналы без ограничений" : ChannelsOfTier(tier) + " каналов")
                 + ", радиусы связи сети ×" + radius.ToString("0.##")
-                + ", контроллер потребляет ×" + ControllerDrawFactor(tier).ToString("0.##") + ".",
+                + (SelfPowered(tier) ? ", сеть питается от самого ядра — контроллер и все устройства не потребляют энергию."
+                    : ", контроллер потребляет ×" + ControllerDrawFactor(tier).ToString("0.##") + "."),
             descEn = descEn + " In a storage controller: " + (tier >= UnlimitedTier ? "unlimited channels" : ChannelsOfTier(tier) + " channels")
                 + ", network link radii x" + radius.ToString("0.##")
-                + ", controller draw x" + ControllerDrawFactor(tier).ToString("0.##") + ".",
+                + (SelfPowered(tier) ? ", the core powers the network itself - the controller and every device draw nothing."
+                    : ", controller draw x" + ControllerDrawFactor(tier).ToString("0.##") + "."),
         };
 
         /// <summary>Planet cores (tier 5): each made with a resource found only on that planet.</summary>

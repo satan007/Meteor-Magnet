@@ -33,7 +33,7 @@ namespace MeteorMagnet
             /// <summary>Rover oxygen (through the rover simulation): own life support, works and draws nothing without base power.</summary>
             internal bool Autonomous => Upgrade(RoverUpgradeType.Oxygen) > 0;
 
-            internal float Draw => Autonomous ? 0f : Plugin.EnergyUse(wo.GetGroup().GetId())
+            internal float Draw => Autonomous || StorageNetwork.NetOf(wo)?.SelfPowered == true ? 0f : Plugin.EnergyUse(wo.GetGroup().GetId())
                 * (effects.Contains(ResonatorEffect.PowerSaver) ? Weaken(Content.PowerSaverFactor) : 1f);
 
             /// <summary>Emergency expansion inside: twice the module slots, every other module at half strength.</summary>
