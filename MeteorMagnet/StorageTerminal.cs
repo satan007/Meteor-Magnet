@@ -185,8 +185,8 @@ namespace MeteorMagnet
             string problem = null;
             if (net == null)
             {
-                problem = T("Терминал не подключён: нужен контроллер хранилища с ядром рядом (40 м от контроллера или реле, 12 м от другого устройства сети) и свободный канал.",
-                    "The terminal is not connected: it needs a storage controller with a core nearby (40 m from the controller or a relay, 12 m from another network device) and a free channel.");
+                problem = T("Терминал не подключён: нужен контроллер хранилища с ядром рядом (60 м от контроллера или реле, 12 м от другого устройства сети) и свободный канал.",
+                    "The terminal is not connected: it needs a storage controller with a core nearby (60 m from the controller or a relay, 12 m from another network device) and a free channel.");
             }
             else if (!MagnetController.NetworkPowered)
             {

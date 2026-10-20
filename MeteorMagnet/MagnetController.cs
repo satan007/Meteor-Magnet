@@ -580,7 +580,7 @@ namespace MeteorMagnet
                 }
                 foreach (var m in magnets)
                 {
-                    candidates.Add((m.wo, m.position, Content.DeviceLinkRadius, m.tier.color, m));
+                    candidates.Add((m.wo, m.position, Content.DeviceLinkRadius * factor, m.tier.color, m));
                 }
                 var joined = new bool[candidates.Count];
                 bool grew;
@@ -686,7 +686,8 @@ namespace MeteorMagnet
                         + (Satellite.IsLaunched(sc.wo.GetPlanetHash()) ? "" : "satellite launched over this planet"));
                 }
                 lines.Add("  => link radius: " + (sc.tier.linkRadius * sc.LinkFactor).ToString("0") + " m (relays "
-                    + (Content.Relay.linkRadius * sc.LinkFactor).ToString("0") + " m)" + (sc.LinkFactor > 1f ? " incl. Beacon x" + sc.LinkFactor : ""));
+                    + (Content.Relay.linkRadius * sc.LinkFactor).ToString("0") + " m, magnets " + (Content.DeviceLinkRadius * sc.LinkFactor).ToString("0") + " m)"
+                    + (sc.LinkFactor > 1f ? " incl. Beacon x" + sc.LinkFactor : ""));
                 lines.Add("  => tracks " + sc.TrackSlots + " meteors (base " + sc.tier.trackSlots + ")"
                     + ", lock-on " + sc.LockTime.ToString("0.0") + " s (rare x" + Content.RareLockFactor + ")"
                     + ", rare meteors " + (sc.tier.seesRare ? "seen" : "NOT seen")

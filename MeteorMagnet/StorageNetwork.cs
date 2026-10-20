@@ -254,17 +254,17 @@ namespace MeteorMagnet
                     }
                 }
 
-                // Reach: a tree grown from the controller. Relays carry the link far (40 m), every other device of the
+                // Reach: a tree grown from the controller. Relays carry the link far (60 m), every other device of the
                 // network passes it on to neighbours close by (12 m), so a compact base needs no relays at all.
                 // Each node remembers the node it was reached from, for the channel spirals.
                 var nodes = new List<(int id, Vector3 pos, float radius, int parent, WorldObject device)>
                 {
-                    (c.GetId(), c.GetPosition(), Content.StorageLinkRadius, -1, null),
+                    (c.GetId(), c.GetPosition(), Content.LinkRadius, -1, null),
                 };
                 var candidates = new List<(WorldObject wo, Vector3 pos, float radius, int kind)>();
                 foreach (var r in relays)
                 {
-                    candidates.Add((r.wo, r.position, Content.StorageLinkRadius, -1));
+                    candidates.Add((r.wo, r.position, Content.LinkRadius, -1));
                 }
                 void AddDevices(List<WorldObject> list, int kind)
                 {
