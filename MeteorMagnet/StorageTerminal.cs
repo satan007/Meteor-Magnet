@@ -214,7 +214,7 @@ namespace MeteorMagnet
             GUILayout.Label(T("Предметов: ", "Items: ") + net.Stored + "/" + net.Capacity
                 + T("   Видов: ", "   Kinds: ") + kinds + "/" + net.KindSlots
                 + T("   Дисков: ", "   Disks: ") + net.disks.Count
-                + T("   Каналы: ", "   Channels: ") + (net.drives.Count + net.terminals.Count + net.magnets.Count) + "/" + net.channels
+                + T("   Каналы: ", "   Channels: ") + net.Used + "/" + net.channels
                 + (net.unserved.Count > 0 ? T("   без канала: ", "   without a channel: ") + net.unserved.Count : ""), text);
             GUILayout.Label(T("Клик — 1 предмет, Shift+клик — все этого вида.", "Click: 1 item, Shift+click: all of that kind."), text);
             GUILayout.BeginHorizontal();

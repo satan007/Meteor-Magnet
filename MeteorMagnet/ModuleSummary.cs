@@ -45,7 +45,7 @@ namespace MeteorMagnet
                 var r = new BuildingSummary { title = Readable.GetGroupName(net.controller.GetGroup()) };
                 var core = net.coreId != null ? GroupsHandler.GetGroupViaId(net.coreId) : null;
                 r.lines.Add(T("Ядро: ", "Core: ") + (core != null ? Readable.GetGroupName(core) : T("нет — сеть не работает", "none - the network is off")));
-                r.lines.Add(T("Каналы: ", "Channels: ") + (net.drives.Count + net.terminals.Count + net.magnets.Count) + "/" + net.channels
+                r.lines.Add(T("Каналы: ", "Channels: ") + net.Used + "/" + net.channels
                     + (net.unserved.Count > 0 ? T(", без канала: ", ", without a channel: ") + net.unserved.Count : ""));
                 r.lines.Add(T("Дисководов: ", "Drives: ") + net.drives.Count + T(", терминалов: ", ", terminals: ") + net.terminals.Count
                     + T(", дисков: ", ", disks: ") + net.disks.Count);
@@ -259,6 +259,10 @@ namespace MeteorMagnet
             if (b.moduleInventory != null)
             {
                 r.lines.Add(T("Ячейки модулей: ", "Module slots: ") + b.moduleInventory.GetInsideWorldObjects().Count + "/" + b.moduleInventory.GetSize());
+            }
+            if (b.networkModules.Count > 0)
+            {
+                r.lines.Add(T("Из сети: ", "From the network: ") + string.Join(", ", b.networkModules));
             }
             if (b.Weakened)
             {

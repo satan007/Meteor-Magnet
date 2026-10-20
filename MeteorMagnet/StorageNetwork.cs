@@ -130,11 +130,15 @@ namespace MeteorMagnet
         internal int channels;
         internal readonly List<WorldObject> drives = [];
         internal readonly List<WorldObject> terminals = [];
-        /// <summary>Magnets with the pulsar transmitter served by this network.</summary>
+        /// <summary>Magnets and scanners with the pulsar transmitter served by this network.</summary>
         internal readonly List<WorldObject> magnets = [];
+        /// <summary>Module distributors of this network.</summary>
+        internal readonly List<WorldObject> hubs = [];
         /// <summary>Devices in reach that got no channel (farthest first lose out).</summary>
         internal readonly List<WorldObject> unserved = [];
         internal readonly List<NetworkDisk> disks = [];
+        /// <summary>Channels taken: every device but the controller.</summary>
+        internal int Used => drives.Count + terminals.Count + magnets.Count + hubs.Count;
         internal int Capacity { get { var c = 0; foreach (var d in disks) { c += d.def.capacity; } return c; } }
         internal int Stored { get { var c = 0; foreach (var d in disks) { c += d.Count; } return c; } }
         internal int KindSlots { get { var c = 0; foreach (var d in disks) { c += d.def.types; } return c; } }
@@ -143,7 +147,8 @@ namespace MeteorMagnet
         {
             var draw = Plugin.EnergyUse(Content.StorageController.id)
                 + drives.Count * Plugin.EnergyUse(Content.StorageDrive.id)
-                + terminals.Count * Plugin.EnergyUse(Content.StorageTerminal.id);
+                + terminals.Count * Plugin.EnergyUse(Content.StorageTerminal.id)
+                + hubs.Count * Plugin.EnergyUse(Content.ModuleHub.id);
             foreach (var d in disks)
             {
                 draw += d.def.energy;
@@ -183,7 +188,7 @@ namespace MeteorMagnet
         {
             foreach (var n in Nets)
             {
-                if (n.terminals.Contains(device) || n.drives.Contains(device) || n.magnets.Contains(device) || n.controller == device)
+                if (n.terminals.Contains(device) || n.drives.Contains(device) || n.magnets.Contains(device) || n.hubs.Contains(device) || n.controller == device)
                 {
                     return n;
                 }
@@ -198,7 +203,8 @@ namespace MeteorMagnet
             return d.magnitude;
         }
 
-        internal static void Build(List<WorldObject> controllers, List<WorldObject> drives, List<WorldObject> terminals, List<WorldObject> magnets, List<Vector3> relays)
+        internal static void Build(List<WorldObject> controllers, List<WorldObject> drives, List<WorldObject> terminals, List<WorldObject> magnets,
+            List<WorldObject> hubs, List<Vector3> relays)
         {
             Nets.Clear();
             var taken = new HashSet<WorldObject>();
@@ -235,7 +241,7 @@ namespace MeteorMagnet
                     }
                 } while (grew);
 
-                // 0 drive, 1 terminal, 2 linked magnet.
+                // 0 drive, 1 terminal, 2 linked magnet or scanner, 3 module distributor.
                 var devices = new List<(WorldObject wo, int kind, float dist)>();
                 void Collect(List<WorldObject> list, int kind)
                 {
@@ -250,17 +256,18 @@ namespace MeteorMagnet
                 Collect(drives, 0);
                 Collect(terminals, 1);
                 Collect(magnets, 2);
+                Collect(hubs, 3);
                 devices.Sort((a, b) => a.dist.CompareTo(b.dist));
                 foreach (var (wo, kind, _) in devices)
                 {
                     taken.Add(wo);
-                    if (net.drives.Count + net.terminals.Count + net.magnets.Count >= net.channels)
+                    if (net.Used >= net.channels)
                     {
                         net.unserved.Add(wo);
                     }
                     else
                     {
-                        (kind == 0 ? net.drives : kind == 1 ? net.terminals : net.magnets).Add(wo);
+                        (kind == 0 ? net.drives : kind == 1 ? net.terminals : kind == 2 ? net.magnets : net.hubs).Add(wo);
                     }
                 }
 
@@ -284,7 +291,7 @@ namespace MeteorMagnet
                 Nets.Add(net);
 
                 var state = "core " + (net.coreId ?? "none") + " (" + net.channels + " channels), drives " + net.drives.Count
-                    + ", terminals " + net.terminals.Count + ", linked magnets " + net.magnets.Count + ", without a channel " + net.unserved.Count
+                    + ", terminals " + net.terminals.Count + ", linked magnets/scanners " + net.magnets.Count + ", distributors " + net.hubs.Count + ", without a channel " + net.unserved.Count
                     + ", disks " + net.disks.Count + ", stored " + net.Stored + "/" + net.Capacity + ", draw " + net.Draw().ToString("0.#") + " kW";
                 if (!logged.TryGetValue(c.GetId(), out var last) || last != state)
                 {

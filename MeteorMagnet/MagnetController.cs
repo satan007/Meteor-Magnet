@@ -76,18 +76,50 @@ namespace MeteorMagnet
                 [RoverUpgradeType.Storage, RoverUpgradeType.Speed, RoverUpgradeType.Lights, RoverUpgradeType.Logistics, RoverUpgradeType.Jetpack,
                     RoverUpgradeType.Oxygen];
 
-            internal void ReadModules()
+            /// <summary>Modules this building gets from the storage network (module distributor), by name.</summary>
+            internal readonly List<string> networkModules = [];
+
+            internal static bool UsesRover(RoverUpgradeType t, bool scanner) => (scanner ? scannerUpgrades : magnetUpgrades).Contains(t);
+
+            internal static bool UsesGear(GearType t, bool scanner) => (scanner ? scannerGear : magnetGear).Contains(t);
+
+            /// <summary>
+            /// Reads the module slots, plus the modules lent by the storage network (module distributor) if given.
+            /// Can be called again: everything read before is reset.
+            /// </summary>
+            internal void ReadModules(List<WorldObject> fromNetwork = null)
             {
+                effects.Clear();
+                upgrades.Clear();
+                gear.Clear();
+                moduleReport.Clear();
+                networkModules.Clear();
+                roverItems = gearItems = 0;
                 if (moduleInventory == null)
                 {
                     return;
                 }
                 var isScanner = this is Scanner;
                 var here = isScanner ? "scanner" : "magnet";
+                var items = new List<(WorldObject item, bool lent)>();
                 foreach (var item in moduleInventory.GetInsideWorldObjects())
                 {
+                    items.Add((item, false));
+                }
+                foreach (var item in fromNetwork ?? [])
+                {
+                    items.Add((item, true));
+                    networkModules.Add(Readable.GetGroupName(item.GetGroup()));
+                }
+                var mark = 0;
+                var lastLent = false;
+                foreach (var (item, lent) in items)
+                {
+                    // Report lines of the previous item, if it was lent by the network, are marked as such.
+                    MarkLent(ref mark, lastLent);
+                    lastLent = lent;
                     var itemId = item?.GetGroup()?.GetId();
-                    if (itemId == Content.Blueprint.id)
+                    if (itemId == Content.Blueprint.id && !lent)
                     {
                         moduleReport.Add(itemId + ": " + DecodeBlueprint(item, moduleInventory));
                         continue;
@@ -162,6 +194,7 @@ namespace MeteorMagnet
                     }
                     moduleReport.Add((itemId ?? "?") + ": not a module");
                 }
+                MarkLent(ref mark, lastLent);
 
                 // Rover upgrades and player equipment are made for other machines: they work only through
                 // the matching simulation module in the same building.
@@ -185,6 +218,15 @@ namespace MeteorMagnet
                     HalveTiers(upgrades, "rover");
                     HalveTiers(gear, "equipment");
                 }
+            }
+
+            void MarkLent(ref int mark, bool lent)
+            {
+                for (int i = mark; lent && i < moduleReport.Count; i++)
+                {
+                    moduleReport[i] = "[network] " + moduleReport[i];
+                }
+                mark = moduleReport.Count;
             }
 
             void HalveTiers<T>(Dictionary<T, int> tiers, string what)
@@ -296,6 +338,7 @@ namespace MeteorMagnet
         readonly List<WorldObject> storageControllers = [];
         readonly List<WorldObject> storageDrives = [];
         readonly List<WorldObject> storageTerminals = [];
+        readonly List<WorldObject> storageHubs = [];
         // Slipped meteors, followed to the ground to mark where they land (last seen position).
         readonly Dictionary<Asteroid, Vector3> slippedWatch = [];
         // When the beacons call the next shower (NaN = no beacon yet).
@@ -384,6 +427,7 @@ namespace MeteorMagnet
             storageControllers.Clear();
             storageDrives.Clear();
             storageTerminals.Clear();
+            storageHubs.Clear();
             beaconEffects.Clear();
             beaconModules.Clear();
             displayCount = 0;
@@ -394,16 +438,16 @@ namespace MeteorMagnet
                 var tier = Content.TierOf(gid);
                 var scannerTier = Content.ScannerOf(gid);
                 var relay = Content.IsRelay(gid);
-                if (gid == Content.StorageController.id || gid == Content.StorageDrive.id || gid == Content.StorageTerminal.id)
+                var storageDef = Array.Find(Content.StorageBuildings, d => d.id == gid);
+                if (storageDef != null)
                 {
                     if (wo.GetIsPlaced() && (planetHash == 0 || wo.GetPlanetHash() == planetHash))
                     {
-                        var list = gid == Content.StorageController.id ? storageControllers
-                            : gid == Content.StorageDrive.id ? storageDrives : storageTerminals;
+                        var list = storageDef == Content.StorageController ? storageControllers
+                            : storageDef == Content.StorageDrive ? storageDrives
+                            : storageDef == Content.StorageTerminal ? storageTerminals : storageHubs;
                         list.Add(wo);
-                        var def = gid == Content.StorageController.id ? Content.StorageController
-                            : gid == Content.StorageDrive.id ? Content.StorageDrive : Content.StorageTerminal;
-                        Decorate(wo, def.color, def.level, 0);
+                        Decorate(wo, storageDef.color, storageDef.level, 0);
                     }
                     continue;
                 }
@@ -492,15 +536,16 @@ namespace MeteorMagnet
                     Decorate(wo, tier.color, tier.level, magnet.LightTier);
                 }
             }
-            var linkedMagnets = new List<WorldObject>();
-            foreach (var m in magnets)
+            var linked = new List<WorldObject>();
+            foreach (var b in AllBuildings())
             {
-                if (m.effects.Contains(ResonatorEffect.StorageLink))
+                if (b.effects.Contains(ResonatorEffect.StorageLink))
                 {
-                    linkedMagnets.Add(m.wo);
+                    linked.Add(b.wo);
                 }
             }
-            StorageNetwork.Build(storageControllers, storageDrives, storageTerminals, linkedMagnets, relays.ConvertAll(r => r.position));
+            StorageNetwork.Build(storageControllers, storageDrives, storageTerminals, linked, storageHubs, relays.ConvertAll(r => r.position));
+            ApplyNetworkModules(planetHash);
             FlushBuffers();
             UpdateSummaries();
         }
@@ -2281,6 +2326,122 @@ namespace MeteorMagnet
             });
             Plugin.Log("Overflow: " + g.GetId() + " from " + Describe(c.magnet) + " to " + Describe(best) + (bestRank == 0 ? " (its filter wants it)" : " (stores everything)"));
             return true;
+        }
+
+        IEnumerable<Building> AllBuildings()
+        {
+            foreach (var s in scanners)
+            {
+                yield return s;
+            }
+            foreach (var m in magnets)
+            {
+                yield return m;
+            }
+        }
+
+        /// <summary>
+        /// Module distributor: linked scanners and magnets get the modules stored on the network's disks into their
+        /// free slots, one of each kind they do not have yet. A module on a disk serves every such building.
+        /// The pulsar transmitter and the emergency expansion are not lent (they change the network link and the slots).
+        /// </summary>
+        void ApplyNetworkModules(int planetHash)
+        {
+            foreach (var b in AllBuildings())
+            {
+                if (!b.effects.Contains(ResonatorEffect.StorageLink) || b.moduleInventory == null)
+                {
+                    continue;
+                }
+                var net = StorageNetwork.NetOf(b.wo);
+                if (net == null || net.hubs.Count == 0 || !powerOk)
+                {
+                    continue;
+                }
+                var isScanner = b is Scanner;
+                var free = b.moduleInventory.GetSize() - b.moduleInventory.GetInsideWorldObjects().Count;
+                if (free <= 0)
+                {
+                    continue;
+                }
+                var have = new HashSet<string>();
+                foreach (var item in b.moduleInventory.GetInsideWorldObjects())
+                {
+                    var key = ModuleKind(item, isScanner, out _);
+                    if (key != null)
+                    {
+                        have.Add(key);
+                    }
+                }
+                // Best item of each kind on the disks (highest tier for rover upgrades and equipment).
+                var best = new Dictionary<string, (WorldObject item, int tier, int order)>();
+                foreach (var d in net.disks)
+                {
+                    foreach (var item in d.inventory.GetInsideWorldObjects())
+                    {
+                        var key = ModuleKind(item, isScanner, out var tier);
+                        if (key == null || have.Contains(key))
+                        {
+                            continue;
+                        }
+                        var order = key.StartsWith("res:", StringComparison.Ordinal) ? 0 : key.StartsWith("rover:", StringComparison.Ordinal) ? 1
+                            : key.StartsWith("gear:", StringComparison.Ordinal) ? 2 : 3;
+                        if (!best.TryGetValue(key, out var cur) || tier > cur.tier)
+                        {
+                            best[key] = (item, tier, order);
+                        }
+                    }
+                }
+                if (best.Count == 0)
+                {
+                    continue;
+                }
+                var picks = new List<(WorldObject item, int tier, int order)>(best.Values);
+                picks.Sort((a, c) => a.order != c.order ? a.order.CompareTo(c.order)
+                    : string.Compare(a.item.GetGroup().GetId(), c.item.GetGroup().GetId(), StringComparison.Ordinal));
+                var lent = picks.GetRange(0, Math.Min(free, picks.Count)).ConvertAll(p => p.item);
+                b.ReadModules(lent);
+                var baseSlots = isScanner ? ((Scanner)b).tier.moduleSlots : ((Magnet)b).tier.moduleSlots;
+                ModuleSlots.SetExtraSlots(b.wo.GetId(), ExtraModuleSlots(b, baseSlots));
+                LogModules(b);
+                if (b is Scanner sc)
+                {
+                    sc.planetWide = sc.tier.usesSatellite && sc.effects.Contains(ResonatorEffect.SpaceLink)
+                        && Satellite.IsLaunched(planetHash != 0 ? planetHash : sc.wo.GetPlanetHash());
+                }
+                else if (b is Magnet m && m.inventory != null)
+                {
+                    ApplyStorageSize(m);
+                }
+            }
+        }
+
+        /// <summary>
+        /// What kind of module an item is for a building, or null if it is not one the distributor lends there:
+        /// "res:Effect", "rover:Type", "gear:Type" or "item:Id" (equipment without an effect, for the simulation bonus).
+        /// </summary>
+        static string ModuleKind(WorldObject item, bool scanner, out int tier)
+        {
+            tier = 0;
+            var id = item?.GetGroup()?.GetId();
+            var res = Content.ResonatorOf(id);
+            if (res != null)
+            {
+                var fits = !res.forBeacon && (res.forBoth || res.forScanner == scanner);
+                return fits && res.effect != ResonatorEffect.StorageLink && res.effect != ResonatorEffect.EmergencyExpansion
+                    ? "res:" + res.effect : null;
+            }
+            if (RoverUpgrades.TryGet(id, out var rt, out var rtier))
+            {
+                tier = rtier;
+                return Building.UsesRover(rt, scanner) ? "rover:" + rt : null;
+            }
+            if (PlayerGear.TryGet(id, out var gt, out var gtier))
+            {
+                tier = gtier;
+                return Building.UsesGear(gt, scanner) ? "gear:" + gt : null;
+            }
+            return PlayerGear.IsOtherEquipment(id) ? "item:" + id : null;
         }
 
         /// <summary>Puts one item on a disk of the network; false if no disk has room for it.</summary>

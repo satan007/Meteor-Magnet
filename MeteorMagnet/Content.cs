@@ -515,7 +515,20 @@ namespace MeteorMagnet
             descEn = "Everything on the network's disks in one list, one icon per item. Use it (or aim and press N). Takes one channel of the controller.",
         };
 
-        internal static readonly StorageDef[] StorageBuildings = [StorageController, StorageDrive, StorageTerminal];
+        internal static readonly StorageDef ModuleHub = new()
+        {
+            id = "MeteorModuleHub", energy = 30f, level = 3, slots = 0,
+            baseGroupIds = ["Beacon", "Container1"],
+            recipe = "MeteorCore,Alloy,Alloy,Iridium,Iridium,Silicon,Silicon,Cobalt",
+            unlockTi = 5000000f,
+            color = new Color(0.9f, 0.5f, 1f),
+            nameRu = "Распределитель модулей",
+            nameEn = "Module Distributor",
+            descRu = "Подключается к сети хранения (занимает канал). Сканеры и захваты с пульсарным передатчиком, подключённые к той же сети, получают модули, лежащие на дисках сети, — в свои свободные ячейки, по одному модулю каждого вида. Один модуль на диске работает во всех таких постройках сразу. Сверх свободных ячеек ничего не добавляется.",
+            descEn = "Joins the storage network (takes a channel). Scanners and magnets with a pulsar transmitter on the same network get the modules stored on the network's disks - into their free slots, one module of each kind. One module on a disk works in all such buildings at once. Nothing beyond the free slots.",
+        };
+
+        internal static readonly StorageDef[] StorageBuildings = [StorageController, StorageDrive, StorageTerminal, ModuleHub];
 
         static StorageItemDef CoreTier(string id, string recipe, int channels, float unlockTi, string ru, string en, DataConfig.CraftableIn station, string descRu, string descEn) => new()
         {
@@ -628,15 +641,15 @@ namespace MeteorMagnet
         [
             new Resonator
             {
-                id = "MeteorResonatorPrime", planet = "Prime", forScanner = false,
+                id = "MeteorResonatorPrime", planet = "Prime", forBoth = true,
                 effect = ResonatorEffect.StorageLink,
                 recipe = "MeteorCore,PulsarQuartz,PulsarQuartz,Alloy",
                 previousRecipes = ["PulsarQuartz,PulsarQuartz,Alloy"],
                 color = new Color(0.3f, 0.8f, 1f),
                 nameRu = "Пульсарный передатчик",
                 nameEn = "Pulsar Transmitter",
-                descRu = "Модуль гравитационного захвата. Соединяет захват с сетью хранения: лут сразу уходит на диски. Если сети нет, она без энергии или диски заполнены — лут ложится во внутреннее хранилище захвата и потом сам досылается в сеть. Захват должен стоять в зоне сети и занимает канал контроллера.",
-                descEn = "Meteor Magnet module. Links the magnet to the storage network: loot goes straight to the disks. With no network, no power or full disks the loot goes to the magnet's own storage and is sent on later. The magnet must stand within the network's reach and takes a controller channel.",
+                descRu = "Модуль захвата или сканера. Соединяет постройку с сетью хранения (она должна стоять в зоне сети и занимает канал). Захват отправляет лут сразу на диски; если сети нет, она без энергии или диски полны — лут ложится в его хранилище и потом сам досылается. С распределителем модулей постройка получает модули с дисков сети в свободные ячейки.",
+                descEn = "Magnet or scanner module. Links the building to the storage network (it must stand within the network's reach and takes a channel). A magnet sends its loot straight to the disks; with no network, no power or full disks the loot waits in its storage and is sent on later. With a module distributor the building gets modules from the network's disks into its free slots.",
             },
             new Resonator
             {
