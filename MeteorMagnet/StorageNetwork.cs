@@ -211,14 +211,14 @@ namespace MeteorMagnet
         }
 
         /// <summary>The nearest node whose circle covers the point, or -1.</summary>
-        static int Nearest(List<(int id, Vector3 pos, int parent)> nodes, Vector3 p)
+        static int Nearest(List<(int id, Vector3 pos, float radius, int parent, WorldObject device)> nodes, Vector3 p)
         {
             var best = -1;
             var bestDist = float.MaxValue;
             for (int i = 0; i < nodes.Count; i++)
             {
                 var d = Flat(nodes[i].pos, p);
-                if (d <= Content.StorageLinkRadius && d < bestDist)
+                if (d <= nodes[i].radius && d < bestDist)
                 {
                     best = i;
                     bestDist = d;
@@ -254,47 +254,60 @@ namespace MeteorMagnet
                     }
                 }
 
-                // Reach: the controller's circle, grown through chains of meteor relays. Each relay remembers the node
-                // it was reached from, so the links form a tree (for the channel spirals).
-                var nodes = new List<(int id, Vector3 pos, int parent)> { (c.GetId(), c.GetPosition(), -1) };
-                var area = new List<Vector3> { c.GetPosition() };
-                var joined = new bool[relays.Count];
+                // Reach: a tree grown from the controller. Relays carry the link far (40 m), every other device of the
+                // network passes it on to neighbours close by (12 m), so a compact base needs no relays at all.
+                // Each node remembers the node it was reached from, for the channel spirals.
+                var nodes = new List<(int id, Vector3 pos, float radius, int parent, WorldObject device)>
+                {
+                    (c.GetId(), c.GetPosition(), Content.StorageLinkRadius, -1, null),
+                };
+                var candidates = new List<(WorldObject wo, Vector3 pos, float radius, int kind)>();
+                foreach (var r in relays)
+                {
+                    candidates.Add((r.wo, r.position, Content.StorageLinkRadius, -1));
+                }
+                void AddDevices(List<WorldObject> list, int kind)
+                {
+                    foreach (var d in list)
+                    {
+                        if (!taken.Contains(d))
+                        {
+                            candidates.Add((d, d.GetPosition(), Content.StorageDeviceLinkRadius, kind));
+                        }
+                    }
+                }
+                // 0 drive, 1 terminal, 2 linked magnet or scanner, 3 module distributor.
+                AddDevices(drives, 0);
+                AddDevices(terminals, 1);
+                AddDevices(magnets, 2);
+                AddDevices(hubs, 3);
+                var joined = new bool[candidates.Count];
                 bool grew;
                 do
                 {
                     grew = false;
-                    for (int i = 0; i < relays.Count; i++)
+                    for (int i = 0; i < candidates.Count; i++)
                     {
-                        var parent = joined[i] ? -1 : Nearest(nodes, relays[i].position);
+                        var parent = joined[i] ? -1 : Nearest(nodes, candidates[i].pos);
                         if (parent >= 0)
                         {
                             joined[i] = true;
-                            nodes.Add((relays[i].wo.GetId(), relays[i].position, parent));
-                            area.Add(relays[i].position);
+                            var cand = candidates[i];
+                            nodes.Add((cand.wo.GetId(), cand.pos, cand.radius, parent, cand.kind >= 0 ? cand.wo : null));
                             grew = true;
                         }
                     }
                 } while (grew);
 
-                // 0 drive, 1 terminal, 2 linked magnet or scanner, 3 module distributor.
-                var devices = new List<(WorldObject wo, int kind, float dist)>();
-                void Collect(List<WorldObject> list, int kind)
+                // Channels go to the devices reached first (closest to the controller along the tree).
+                for (int i = 1; i < nodes.Count; i++)
                 {
-                    foreach (var d in list)
+                    var wo = nodes[i].device;
+                    if (wo == null)
                     {
-                        if (!taken.Contains(d) && area.Exists(p => Flat(p, d.GetPosition()) <= Content.StorageLinkRadius))
-                        {
-                            devices.Add((d, kind, Flat(c.GetPosition(), d.GetPosition())));
-                        }
+                        continue;
                     }
-                }
-                Collect(drives, 0);
-                Collect(terminals, 1);
-                Collect(magnets, 2);
-                Collect(hubs, 3);
-                devices.Sort((a, b) => a.dist.CompareTo(b.dist));
-                foreach (var (wo, kind, _) in devices)
-                {
+                    var kind = candidates.Find(x => x.wo == wo).kind;
                     taken.Add(wo);
                     if (net.Used >= net.channels)
                     {
@@ -327,13 +340,8 @@ namespace MeteorMagnet
                 var through = new Dictionary<int, int>();
                 foreach (var device in net.Served())
                 {
-                    var at = Nearest(nodes, device.GetPosition());
-                    if (at < 0)
-                    {
-                        continue;
-                    }
-                    net.links.Add((nodes[at].id, nodes[at].pos, device.GetId(), device.GetPosition(), 1));
-                    for (var n = at; nodes[n].parent >= 0; n = nodes[n].parent)
+                    var at = nodes.FindIndex(x => x.device == device);
+                    for (var n = at; n > 0; n = nodes[n].parent)
                     {
                         through[n] = through.TryGetValue(n, out var k) ? k + 1 : 1;
                     }

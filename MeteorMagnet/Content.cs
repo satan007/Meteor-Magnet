@@ -473,7 +473,10 @@ namespace MeteorMagnet
             descEn = "Data stored in the core of a captured meteor (2%). Put it into a scanner's or magnet's module slot: it is decoded and opens the recipe of a random locked module. With none left, it turns into a meteor core.",
         };
 
+        /// <summary>Reach of the storage controller and of a relay.</summary>
         internal const float StorageLinkRadius = 40f;
+        /// <summary>Every other storage device passes the link on to neighbours this close.</summary>
+        internal const float StorageDeviceLinkRadius = 12f;
 
         internal static readonly StorageDef StorageController = new()
         {
@@ -484,8 +487,8 @@ namespace MeteorMagnet
             color = new Color(0.2f, 0.9f, 1f),
             nameRu = "Контроллер хранилища",
             nameEn = "Storage Controller",
-            descRu = "Сердце сети хранения. В ячейку (клавиша K) кладётся ядро: его тир задаёт, сколько дисководов и терминалов сеть обслуживает. Устройства работают в 40 м от контроллера или реле.",
-            descEn = "Heart of the storage network. A core goes into its slot (K key): its tier sets how many drives and terminals the network serves. Devices work within 40 m of the controller or a relay.",
+            descRu = "Сердце сети хранения. В ячейку (клавиша K) кладётся ядро: его тир задаёт число каналов — сколько устройств сеть обслуживает. Связь идёт на 40 м от контроллера и метеорного реле, а каждое устройство сети передаёт её соседям в 12 м.",
+            descEn = "Heart of the storage network. A core goes into its slot (K key): its tier sets the channels - how many devices the network serves. The link reaches 40 m from the controller and meteor relays, and every device passes it on to neighbours within 12 m.",
         };
 
         internal static readonly StorageDef StorageDrive = new()
