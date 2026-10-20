@@ -1583,10 +1583,13 @@ namespace MeteorMagnet
             {
                 return "being decoded";
             }
+            // Beacon modules only once the beacon itself can be built, so a blueprint never opens a module for nothing.
+            var beacon = GroupsHandler.GetGroupViaId(Content.Beacon.id);
+            var beaconOpen = beacon != null && (UnlockedGroupsHandler.Instance.IsGloballyUnlocked(beacon) || beacon.GetUnlockingInfos().GetIsUnlocked());
             var locked = new List<Group>();
             foreach (var r in Content.Resonators)
             {
-                var g = r.locked ? GroupsHandler.GetGroupViaId(r.id) : null;
+                var g = r.locked && (beaconOpen || !r.forBeacon) ? GroupsHandler.GetGroupViaId(r.id) : null;
                 if (g != null && !UnlockedGroupsHandler.Instance.IsGloballyUnlocked(g))
                 {
                     locked.Add(g);

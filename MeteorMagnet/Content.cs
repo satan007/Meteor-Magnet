@@ -205,6 +205,8 @@ namespace MeteorMagnet
         internal bool forBeacon;
         /// <summary>Closed at the start: its recipe opens with a meteor blueprint decoded in a module slot.</summary>
         internal bool locked;
+        /// <summary>Terraformation (Ti) at which the recipe opens, for modules that are not locked behind blueprints.</summary>
+        internal float unlockTi;
         internal string planet;
         internal ResonatorEffect effect;
         /// <summary>Crafting station: planet resonators on T2, advanced modules on T3.</summary>
@@ -697,6 +699,8 @@ namespace MeteorMagnet
             new Resonator
             {
                 id = "MeteorSpaceLink", planet = null, forScanner = true,
+                // Useful only with a Mk3 scanner and the satellite rocket: opens with them.
+                unlockTi = 100000000f,
                 craftStation = DataConfig.CraftableIn.CraftStationT3,
                 effect = ResonatorEffect.SpaceLink,
                 recipe = "MeteorCore,MeteorCore,Alloy,Alloy,Osmium,Iridium,Iridium,Silicon,Silicon",

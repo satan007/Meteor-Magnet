@@ -142,6 +142,10 @@ namespace MeteorMagnet
                     entry.Value = res.recipe;
                 }
                 recipes[res.id] = entry;
+                if (!res.locked)
+                {
+                    unlocks[res.id] = Config.Bind(res.ConfigSection, "UnlockAtTerraformation", res.unlockTi, "Индекс терраформации (Ti), при котором открывается рецепт. 0 = доступно сразу.");
+                }
             }
 
             var rocket = Content.SatelliteRocket;
@@ -353,7 +357,7 @@ namespace MeteorMagnet
                 var item = Instantiate(resonatorBase);
                 SetupClone(item, res.id, ___groupsData);
                 // Locked modules never open by terraformation, only by a decoded meteor blueprint.
-                item.unlockingValue = res.locked ? 1e30f : 0f;
+                item.unlockingValue = res.locked ? 1e30f : unlocks[res.id].Value;
                 item.craftableInList = [res.craftStation];
                 ___groupsData.Add(item);
                 Log("Registered resonator " + res.id);
@@ -657,7 +661,7 @@ namespace MeteorMagnet
         {
             var ids = Content.Buildings.Where(b => unlocks[b.id].Value <= 0f).Select(b => b.id)
                 .Concat(unlocks[Content.SatelliteRocket.id].Value <= 0f ? new[] { Content.SatelliteRocket.id } : Array.Empty<string>())
-                .Concat(Content.Resonators.Where(r => !r.locked).Select(r => r.id))
+                .Concat(Content.Resonators.Where(r => !r.locked && unlocks[r.id].Value <= 0f).Select(r => r.id))
                 .Concat(Content.StorageItems.Where(d => unlocks[d.id].Value <= 0f).Select(d => d.id));
             foreach (var id in ids)
             {
