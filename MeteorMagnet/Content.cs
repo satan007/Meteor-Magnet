@@ -30,7 +30,7 @@ namespace MeteorMagnet
 
     /// <summary>
     /// The gravity magnet: pulls in meteors a scanner hands to it and processes their loot.
-    /// It works only inside a scanner's link area (around the scanner or a linked relay).
+    /// It works only inside a scanner's link area (around the scanner, a linked relay or a linked magnet close by).
     /// </summary>
     internal class MagnetTier : BuildingDef
     {
@@ -308,8 +308,8 @@ namespace MeteorMagnet
                 color = new Color(0.35f, 0.55f, 1f),
                 nameRu = "Гравитационный захват Mk1",
                 nameEn = "Meteor Magnet Mk1",
-                descRu = "Притягивает метеориты, которые ему передаёт сканер (ставить в зоне связи сканера или реле). Держит 1 метеорит за раз. Ресурсы ссыпаются кучкой рядом. 1 ячейка под модуль (клавиша K).",
-                descEn = "Pulls in meteors handed over by a scanner (place it in the link area of a scanner or relay). Holds 1 meteor at a time. Resources drop in a pile next to it. 1 module slot (K key).",
+                descRu = "Притягивает метеориты, которые ему передаёт сканер (ставить в зоне связи сканера или реле, либо в 12 м от другого захвата сети — захваты передают связь соседям). Держит 1 метеорит за раз. Ресурсы ссыпаются кучкой рядом. 1 ячейка под модуль (клавиша K).",
+                descEn = "Pulls in meteors handed over by a scanner (place it in the link area of a scanner or relay, or within 12 m of another linked magnet - magnets pass the link on). Holds 1 meteor at a time. Resources drop in a pile next to it. 1 module slot (K key).",
             },
             new MagnetTier
             {
@@ -414,8 +414,8 @@ namespace MeteorMagnet
             color = new Color(1f, 0.9f, 0.4f),
             nameRu = "Реле сканера",
             nameEn = "Scanner Relay",
-            descRu = "Продлевает зону связи сканера на 60 м вокруг себя. Ставить в зоне связи сканера или другого реле, можно цепочкой. Само ничего не сканирует.",
-            descEn = "Extends a scanner's link area by 60 m around itself. Place it inside the link area of a scanner or another relay; chains work. Scans nothing itself.",
+            descRu = "Продлевает связь на 60 м вокруг себя — дешёвая передача на расстояние. Ставить в зоне связи сканера, контроллера хранилища, другого реле или рядом с устройством сети, можно цепочкой. Работает и для метеорной сети, и для сети хранения. Само ничего не сканирует.",
+            descEn = "Extends the link 60 m around itself - the cheap way to carry it far. Place it inside the link area of a scanner, a storage controller, another relay or next to a network device; chains work. Serves both the meteor and the storage network. Scans nothing itself.",
         };
 
         internal static readonly DisplayDef Display = new()
@@ -475,8 +475,8 @@ namespace MeteorMagnet
 
         /// <summary>Reach of the storage controller and of a relay.</summary>
         internal const float StorageLinkRadius = 40f;
-        /// <summary>Every other storage device passes the link on to neighbours this close.</summary>
-        internal const float StorageDeviceLinkRadius = 12f;
+        /// <summary>Every other device (storage devices, magnets) passes the link on to neighbours this close.</summary>
+        internal const float DeviceLinkRadius = 12f;
 
         internal static readonly StorageDef StorageController = new()
         {

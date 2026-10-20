@@ -571,50 +571,51 @@ namespace MeteorMagnet
                 // Who each circle of the link area belongs to, for the signal lines.
                 var nodes = new List<(int id, Vector3 pos, Color color)> { (s.wo.GetId(), s.position, s.tier.color) };
 
-                // Relays join when they stand inside the area reached so far; repeat until nothing new joins.
-                var joined = new bool[relays.Count];
+                // The link grows like the storage network: relays carry it far, every magnet passes it on to
+                // neighbours close by. Whatever stands inside the area reached so far joins; repeat until nothing does.
+                var candidates = new List<(WorldObject wo, Vector3 pos, float radius, Color color, Magnet magnet)>();
+                foreach (var r in relays)
+                {
+                    candidates.Add((r.wo, r.position, Content.Relay.linkRadius * factor, Content.Relay.color, null));
+                }
+                foreach (var m in magnets)
+                {
+                    candidates.Add((m.wo, m.position, Content.DeviceLinkRadius, m.tier.color, m));
+                }
+                var joined = new bool[candidates.Count];
                 bool grew;
                 do
                 {
                     grew = false;
-                    for (int i = 0; i < relays.Count; i++)
+                    for (int i = 0; i < candidates.Count; i++)
                     {
                         if (joined[i])
                         {
                             continue;
                         }
-                        var parent = CoveringNode(s.link, relays[i].position);
-                        if (parent >= 0)
+                        var c = candidates[i];
+                        var parent = CoveringNode(s.link, c.pos);
+                        if (parent < 0)
                         {
-                            joined[i] = true;
-                            s.link.Add((relays[i].position, Content.Relay.linkRadius * factor));
-                            var relayNode = (relays[i].wo.GetId(), relays[i].position, Content.Relay.color);
-                            nodes.Add(relayNode);
-                            if (drawLines)
-                            {
-                                var from = nodes[parent];
-                                signalLines.Edge(from.id, from.pos, from.color, relayNode.Item1, relayNode.Item2, relayNode.Item3);
-                            }
-                            grew = true;
+                            continue;
                         }
-                    }
-                }
-                while (grew);
-
-                foreach (var m in magnets)
-                {
-                    var parent = CoveringNode(s.link, m.position);
-                    if (parent >= 0)
-                    {
-                        s.network.Add(m);
-                        linked.Add(m);
+                        joined[i] = true;
+                        s.link.Add((c.pos, c.radius));
+                        nodes.Add((c.wo.GetId(), c.pos, c.color));
+                        if (c.magnet != null)
+                        {
+                            s.network.Add(c.magnet);
+                            linked.Add(c.magnet);
+                        }
                         if (drawLines)
                         {
                             var from = nodes[parent];
-                            signalLines.Edge(from.id, from.pos, from.color, m.wo.GetId(), m.position, m.tier.color);
+                            signalLines.Edge(from.id, from.pos, from.color, c.wo.GetId(), c.pos, c.color);
                         }
+                        grew = true;
                     }
                 }
+                while (grew);
             }
             if (drawLines)
             {

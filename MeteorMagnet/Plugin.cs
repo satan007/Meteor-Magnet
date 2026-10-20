@@ -724,7 +724,7 @@ namespace MeteorMagnet
                 dict["MeteorMagnet_Deflected"] = ru ? "Сбой поля! Метеорит отброшен в сторону" : "Field failure! The meteor was thrown away";
                 dict["MeteorMagnet_Dropped"] = ru ? "рядом с устройством" : "dropped nearby";
                 dict["MeteorMagnet_ModulesNotReady"] = ru ? "Ячейки модулей создаются, попробуйте ещё раз" : "Module slots are being created, try again";
-                dict["MeteorMagnet_NoScanner"] = ru ? "Гравитационный захват не в зоне связи сканера или реле — он не будет работать" : "Meteor Magnet is outside any scanner or relay link area - it will not work";
+                dict["MeteorMagnet_NoScanner"] = ru ? "Гравитационный захват не в зоне связи сканера, реле или соседнего захвата — он не будет работать" : "Meteor Magnet is outside the link area of any scanner, relay or neighbouring magnet - it will not work";
                 dict["MeteorMagnet_FilterTitle"] = ru ? "Фильтр гравитационного захвата" : "Meteor Magnet filter";
                 dict["MeteorMagnet_FilterHint"] = ru
                     ? "Отмеченные ресурсы идут в хранилище, остальные падают рядом (с модулями — в сундуки или другие захваты). Ничего не отмечено — в хранилище идёт всё. Ядра и чертежи проходят всегда."

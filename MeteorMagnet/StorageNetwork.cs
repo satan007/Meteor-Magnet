@@ -272,7 +272,7 @@ namespace MeteorMagnet
                     {
                         if (!taken.Contains(d))
                         {
-                            candidates.Add((d, d.GetPosition(), Content.StorageDeviceLinkRadius, kind));
+                            candidates.Add((d, d.GetPosition(), Content.DeviceLinkRadius, kind));
                         }
                     }
                 }
