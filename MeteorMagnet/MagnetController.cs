@@ -492,7 +492,16 @@ namespace MeteorMagnet
                     Decorate(wo, tier.color, tier.level, magnet.LightTier);
                 }
             }
-            StorageNetwork.Build(storageControllers, storageDrives, storageTerminals, relays.ConvertAll(r => r.position));
+            var linkedMagnets = new List<WorldObject>();
+            foreach (var m in magnets)
+            {
+                if (m.effects.Contains(ResonatorEffect.StorageLink))
+                {
+                    linkedMagnets.Add(m.wo);
+                }
+            }
+            StorageNetwork.Build(storageControllers, storageDrives, storageTerminals, linkedMagnets, relays.ConvertAll(r => r.position));
+            FlushBuffers();
             UpdateSummaries();
         }
 
@@ -633,7 +642,7 @@ namespace MeteorMagnet
                 lines.Add("  => tracks " + sc.TrackSlots + " meteors (base " + sc.tier.trackSlots + ")"
                     + ", lock-on " + sc.LockTime.ToString("0.0") + " s (rare x" + Content.RareLockFactor + ")"
                     + ", rare meteors " + (sc.tier.seesRare ? "seen" : "NOT seen")
-                    + ", barren meteors " + (sc.effects.Contains(ResonatorEffect.CaptureBarren) ? "seen" : "not seen"));
+                    + (sc.effects.Contains(ResonatorEffect.CaptureBarren) ? ", barren meteors seen" : ""));
                 lines.Add("  => equipment: scan radius x" + (1f + PlayerGear.OxygenRadiusPerTier * sc.Gear(GearType.OxygenTank)).ToString("0.##")
                     + " (oxygen tank), lock-on x" + Mathf.Max(0.1f, 1f - PlayerGear.BootsLockPerTier * sc.Gear(GearType.Boots)).ToString("0.##")
                     + " (boots), compass tags " + (sc.Gear(GearType.Compass) > 0 ? "on" : "off"));
@@ -2134,10 +2143,21 @@ namespace MeteorMagnet
             {
                 Plugin.Log("Magnet #" + c.magnet.wo.GetId() + " storage inventory not found, everything goes to the pile");
             }
+            // Pulsar transmitter: what passes the filter goes straight to the storage network while it has room and power.
+            // At half strength (emergency expansion) only every other meteor's loot is sent.
+            var net = c.magnet.effects.Contains(ResonatorEffect.StorageLink) && powerOk
+                && (!c.magnet.Weakened || UnityEngine.Random.value < c.magnet.Strength) ? StorageNetwork.NetOf(c.magnet.wo) : null;
+            var planned = new Dictionary<NetworkDisk, (int count, HashSet<string> kinds)>();
+            var networked = 0;
             foreach (var g in c.loot)
             {
                 // The meteor core is always kept, whatever the filter says.
                 var passes = c.magnet.filter.Count == 0 || c.magnet.filter.Contains(g.GetId()) || g.GetId() == Content.Core.id || g.GetId() == Content.Blueprint.id;
+                if (net != null && passes && SendToNetwork(net, g, planned))
+                {
+                    networked++;
+                    continue;
+                }
                 var isFull = inv != null && inv.IsFull();
                 if (inv != null && !passes)
                 {
@@ -2183,7 +2203,9 @@ namespace MeteorMagnet
 
             MeteorStats.AddResources(c.loot);
             Plugin.Log("Delivered " + c.loot.Count + " items from magnet #" + c.magnet.wo.GetId() + ": " + stored + " stored/forwarded, "
-                + dropped + " dropped at " + c.pile + (overflowed > 0 ? ", " + overflowed + " overflowed to other magnets (Aqualis)" : "")
+                + dropped + " dropped at " + c.pile + (networked > 0 ? ", " + networked + " sent to the storage network" : "")
+                + (c.magnet.effects.Contains(ResonatorEffect.StorageLink) && net == null ? ", storage network unreachable (no network, channel or power)" : "")
+                + (overflowed > 0 ? ", " + overflowed + " overflowed to other magnets (Aqualis)" : "")
                 + (inv != null ? " (storage " + inv.GetInsideWorldObjects().Count + "/" + inv.GetSize() + ", filtered out " + filteredOut
                     + ", storage full " + full + ", filter: " + (c.magnet.filter.Count == 0 ? "none" : string.Join("/", c.magnet.filter)) + ")" : ""));
             if (Plugin.ShowNotification && c.loot.Count != 0)
@@ -2259,6 +2281,93 @@ namespace MeteorMagnet
             });
             Plugin.Log("Overflow: " + g.GetId() + " from " + Describe(c.magnet) + " to " + Describe(best) + (bestRank == 0 ? " (its filter wants it)" : " (stores everything)"));
             return true;
+        }
+
+        /// <summary>Puts one item on a disk of the network; false if no disk has room for it.</summary>
+        static bool SendToNetwork(StorageNet net, Group g, Dictionary<NetworkDisk, (int count, HashSet<string> kinds)> planned)
+        {
+            var disk = StorageNetwork.DiskFor(net, g.GetId(), planned);
+            if (disk == null)
+            {
+                return false;
+            }
+            var p = planned[disk];
+            p.kinds.Add(g.GetId());
+            planned[disk] = (p.count + 1, p.kinds);
+            var target = disk.inventory;
+            InventoriesHandler.Instance.AddItemToInventory(g, target, (success, id) =>
+            {
+                if (!success)
+                {
+                    DestroyFailed(id);
+                    Plugin.LogWarning("Storage network: could not add " + g.GetId() + " to a disk, item lost");
+                }
+            });
+            return true;
+        }
+
+        const int FlushPerRefresh = 10;
+
+        /// <summary>
+        /// Linked magnets send what waits in their own storage (the buffer) to the network, a few items per refresh,
+        /// as soon as the network is reachable, powered and has room.
+        /// </summary>
+        void FlushBuffers()
+        {
+            if (!powerOk)
+            {
+                return;
+            }
+            foreach (var m in magnets)
+            {
+                if (m.inventory == null || !m.effects.Contains(ResonatorEffect.StorageLink))
+                {
+                    continue;
+                }
+                var net = StorageNetwork.NetOf(m.wo);
+                if (net == null)
+                {
+                    continue;
+                }
+                var planned = new Dictionary<NetworkDisk, (int count, HashSet<string> kinds)>();
+                var sent = 0;
+                foreach (var item in new List<WorldObject>(m.inventory.GetInsideWorldObjects()))
+                {
+                    if (sent >= FlushPerRefresh)
+                    {
+                        break;
+                    }
+                    var g = item?.GetGroup();
+                    if (g == null || item.GetLinkedInventoryId() > 0 || !string.IsNullOrEmpty(item.GetText()))
+                    {
+                        continue;
+                    }
+                    var disk = StorageNetwork.DiskFor(net, g.GetId(), planned);
+                    if (disk == null)
+                    {
+                        continue;
+                    }
+                    var p = planned[disk];
+                    p.kinds.Add(g.GetId());
+                    planned[disk] = (p.count + 1, p.kinds);
+                    var source = m.inventory;
+                    var target = disk.inventory;
+                    InventoriesHandler.Instance.RemoveItemFromInventory(item, source, true, null);
+                    InventoriesHandler.Instance.AddItemToInventory(g, target, (success, id) =>
+                    {
+                        if (!success)
+                        {
+                            DestroyFailed(id);
+                            InventoriesHandler.Instance.AddItemToInventory(g, source, null);
+                        }
+                    });
+                    sent++;
+                }
+                if (sent > 0)
+                {
+                    Plugin.Log("Magnet #" + m.wo.GetId() + " sent " + sent + " buffered items to the storage network");
+                }
+            }
         }
 
         static bool Overflow(Group g, List<Inventory> forward, Vector3 pile)

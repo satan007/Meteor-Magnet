@@ -130,6 +130,8 @@ namespace MeteorMagnet
         internal int channels;
         internal readonly List<WorldObject> drives = [];
         internal readonly List<WorldObject> terminals = [];
+        /// <summary>Magnets with the pulsar transmitter served by this network.</summary>
+        internal readonly List<WorldObject> magnets = [];
         /// <summary>Devices in reach that got no channel (farthest first lose out).</summary>
         internal readonly List<WorldObject> unserved = [];
         internal readonly List<NetworkDisk> disks = [];
@@ -181,7 +183,7 @@ namespace MeteorMagnet
         {
             foreach (var n in Nets)
             {
-                if (n.terminals.Contains(device) || n.drives.Contains(device) || n.controller == device)
+                if (n.terminals.Contains(device) || n.drives.Contains(device) || n.magnets.Contains(device) || n.controller == device)
                 {
                     return n;
                 }
@@ -196,7 +198,7 @@ namespace MeteorMagnet
             return d.magnitude;
         }
 
-        internal static void Build(List<WorldObject> controllers, List<WorldObject> drives, List<WorldObject> terminals, List<Vector3> relays)
+        internal static void Build(List<WorldObject> controllers, List<WorldObject> drives, List<WorldObject> terminals, List<WorldObject> magnets, List<Vector3> relays)
         {
             Nets.Clear();
             var taken = new HashSet<WorldObject>();
@@ -233,36 +235,32 @@ namespace MeteorMagnet
                     }
                 } while (grew);
 
-                var devices = new List<(WorldObject wo, bool drive, float dist)>();
-                foreach (var d in drives)
+                // 0 drive, 1 terminal, 2 linked magnet.
+                var devices = new List<(WorldObject wo, int kind, float dist)>();
+                void Collect(List<WorldObject> list, int kind)
                 {
-                    if (!taken.Contains(d) && area.Exists(p => Flat(p, d.GetPosition()) <= Content.StorageLinkRadius))
+                    foreach (var d in list)
                     {
-                        devices.Add((d, true, Flat(c.GetPosition(), d.GetPosition())));
+                        if (!taken.Contains(d) && area.Exists(p => Flat(p, d.GetPosition()) <= Content.StorageLinkRadius))
+                        {
+                            devices.Add((d, kind, Flat(c.GetPosition(), d.GetPosition())));
+                        }
                     }
                 }
-                foreach (var t in terminals)
-                {
-                    if (!taken.Contains(t) && area.Exists(p => Flat(p, t.GetPosition()) <= Content.StorageLinkRadius))
-                    {
-                        devices.Add((t, false, Flat(c.GetPosition(), t.GetPosition())));
-                    }
-                }
+                Collect(drives, 0);
+                Collect(terminals, 1);
+                Collect(magnets, 2);
                 devices.Sort((a, b) => a.dist.CompareTo(b.dist));
-                foreach (var (wo, drive, _) in devices)
+                foreach (var (wo, kind, _) in devices)
                 {
                     taken.Add(wo);
-                    if (net.drives.Count + net.terminals.Count >= net.channels)
+                    if (net.drives.Count + net.terminals.Count + net.magnets.Count >= net.channels)
                     {
                         net.unserved.Add(wo);
                     }
-                    else if (drive)
-                    {
-                        net.drives.Add(wo);
-                    }
                     else
                     {
-                        net.terminals.Add(wo);
+                        (kind == 0 ? net.drives : kind == 1 ? net.terminals : net.magnets).Add(wo);
                     }
                 }
 
@@ -286,7 +284,7 @@ namespace MeteorMagnet
                 Nets.Add(net);
 
                 var state = "core " + (net.coreId ?? "none") + " (" + net.channels + " channels), drives " + net.drives.Count
-                    + ", terminals " + net.terminals.Count + ", without a channel " + net.unserved.Count
+                    + ", terminals " + net.terminals.Count + ", linked magnets " + net.magnets.Count + ", without a channel " + net.unserved.Count
                     + ", disks " + net.disks.Count + ", stored " + net.Stored + "/" + net.Capacity + ", draw " + net.Draw().ToString("0.#") + " kW";
                 if (!logged.TryGetValue(c.GetId(), out var last) || last != state)
                 {

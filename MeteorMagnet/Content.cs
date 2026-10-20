@@ -149,6 +149,8 @@ namespace MeteorMagnet
     {
         /// <summary>Scanner: also detects meteors that carry no resources; magnets turn them into common ore.</summary>
         CaptureBarren,
+        /// <summary>Magnet: loot goes straight to the storage network; the magnet's own storage is a buffer.</summary>
+        StorageLink,
         /// <summary>+50% loot.</summary>
         LootBonus,
         /// <summary>Scanner: doubles the scan radius (whole-planet scanner: locks on faster instead).</summary>
@@ -626,15 +628,15 @@ namespace MeteorMagnet
         [
             new Resonator
             {
-                id = "MeteorResonatorPrime", planet = "Prime", forScanner = true,
-                effect = ResonatorEffect.CaptureBarren,
+                id = "MeteorResonatorPrime", planet = "Prime", forScanner = false,
+                effect = ResonatorEffect.StorageLink,
                 recipe = "MeteorCore,PulsarQuartz,PulsarQuartz,Alloy",
                 previousRecipes = ["PulsarQuartz,PulsarQuartz,Alloy"],
                 color = new Color(0.3f, 0.8f, 1f),
-                nameRu = "Пульсарный резонатор",
-                nameEn = "Pulsar Resonator",
-                descRu = "Модуль сканера. Сканер замечает и пустые метеориты, а захват превращает их в обычную руду.",
-                descEn = "Scanner module. The scanner also detects barren meteors; magnets turn them into common ore.",
+                nameRu = "Пульсарный передатчик",
+                nameEn = "Pulsar Transmitter",
+                descRu = "Модуль гравитационного захвата. Соединяет захват с сетью хранения: лут сразу уходит на диски. Если сети нет, она без энергии или диски заполнены — лут ложится во внутреннее хранилище захвата и потом сам досылается в сеть. Захват должен стоять в зоне сети и занимает канал контроллера.",
+                descEn = "Meteor Magnet module. Links the magnet to the storage network: loot goes straight to the disks. With no network, no power or full disks the loot goes to the magnet's own storage and is sent on later. The magnet must stand within the network's reach and takes a controller channel.",
             },
             new Resonator
             {

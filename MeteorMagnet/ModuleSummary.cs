@@ -45,7 +45,7 @@ namespace MeteorMagnet
                 var r = new BuildingSummary { title = Readable.GetGroupName(net.controller.GetGroup()) };
                 var core = net.coreId != null ? GroupsHandler.GetGroupViaId(net.coreId) : null;
                 r.lines.Add(T("Ядро: ", "Core: ") + (core != null ? Readable.GetGroupName(core) : T("нет — сеть не работает", "none - the network is off")));
-                r.lines.Add(T("Каналы: ", "Channels: ") + (net.drives.Count + net.terminals.Count) + "/" + net.channels
+                r.lines.Add(T("Каналы: ", "Channels: ") + (net.drives.Count + net.terminals.Count + net.magnets.Count) + "/" + net.channels
                     + (net.unserved.Count > 0 ? T(", без канала: ", ", without a channel: ") + net.unserved.Count : ""));
                 r.lines.Add(T("Дисководов: ", "Drives: ") + net.drives.Count + T(", терминалов: ", ", terminals: ") + net.terminals.Count
                     + T(", дисков: ", ", disks: ") + net.disks.Count);
@@ -109,9 +109,7 @@ namespace MeteorMagnet
             r.lines.Add(T("Целей одновременно: ", "Targets at once: ") + s.TrackSlots);
             r.lines.Add(T("Захват цели: ", "Lock-on: ") + s.LockTime.ToString("0.##") + T(" с", " s")
                 + T(" (редкие ×", " (rare x") + Content.RareLockFactor + ")");
-            r.lines.Add(T("Редкие метеориты: ", "Rare meteors: ") + (s.tier.seesRare ? T("видит", "seen") : T("не видит", "not seen"))
-                + T(", пустые: ", ", barren: ") + (s.effects.Contains(ResonatorEffect.CaptureBarren)
-                    ? (s.Weakened ? T("каждый второй", "every other") : T("видит", "seen")) : T("не видит", "not seen")));
+            r.lines.Add(T("Редкие метеориты: ", "Rare meteors: ") + (s.tier.seesRare ? T("видит", "seen") : T("не видит", "not seen")));
             r.lines.Add(T("Зона связи: ", "Link radius: ") + (s.tier.linkRadius * s.LinkFactor).ToString("0") + T(" м", " m"));
             if (s.filter.Count != 0)
             {
@@ -223,6 +221,14 @@ namespace MeteorMagnet
             }
             AddCommon(m, r);
 
+            if (m.effects.Contains(ResonatorEffect.StorageLink))
+            {
+                var linked = StorageNetwork.NetOf(m.wo);
+                r.lines.Add(T("Сеть хранения: ", "Storage network: ") + (linked == null
+                    ? T("не подключён (нет сети рядом или свободного канала) — лут копится в хранилище", "not linked (no network in reach or no free channel) - loot waits in storage")
+                    : powerOk ? T("подключён, лут идёт на диски", "linked, loot goes to the disks")
+                    : T("подключён, но нет энергии — лут копится в хранилище", "linked, but no power - loot waits in storage")));
+            }
             var core = CoreChance(m);
             if (core >= 2f)
             {
