@@ -159,6 +159,9 @@ namespace MeteorMagnet
         internal int Stored { get { var c = 0; foreach (var d in disks) { c += d.Count; } return c; } }
         internal int KindSlots { get { var c = 0; foreach (var d in disks) { c += d.def.types; } return c; } }
 
+        /// <summary>Circles the network reaches (controller, relays, devices), to find what stands inside it.</summary>
+        internal readonly List<(Vector3 pos, float radius)> reach = [];
+
         /// <summary>The infinity core powers the whole network: nothing on it draws power.</summary>
         internal bool SelfPowered => Content.SelfPowered(Content.CoreTierOf(coreId));
 
@@ -206,6 +209,26 @@ namespace MeteorMagnet
                 d += n.Draw();
             }
             return d;
+        }
+
+        /// <summary>Whether a point lies inside the reach of a network powered by an infinity core.</summary>
+        internal static bool FreelyPowered(Vector3 p)
+        {
+            foreach (var n in Nets)
+            {
+                if (!n.SelfPowered)
+                {
+                    continue;
+                }
+                foreach (var (pos, radius) in n.reach)
+                {
+                    if (Flat(pos, p) <= radius)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         internal static StorageNet NetOf(WorldObject device)
@@ -362,6 +385,10 @@ namespace MeteorMagnet
                     var child = nodes[kv.Key];
                     var parent = nodes[child.parent];
                     net.links.Add((parent.id, parent.pos, child.id, child.pos, kv.Value));
+                }
+                foreach (var n in nodes)
+                {
+                    net.reach.Add((n.pos, n.radius));
                 }
                 Nets.Add(net);
 

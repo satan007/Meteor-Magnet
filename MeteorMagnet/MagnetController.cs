@@ -33,7 +33,7 @@ namespace MeteorMagnet
             /// <summary>Rover oxygen (through the rover simulation): own life support, works and draws nothing without base power.</summary>
             internal bool Autonomous => Upgrade(RoverUpgradeType.Oxygen) > 0;
 
-            internal float Draw => Autonomous || StorageNetwork.NetOf(wo)?.SelfPowered == true ? 0f : Plugin.EnergyUse(wo.GetGroup().GetId())
+            internal float Draw => Autonomous || StorageNetwork.FreelyPowered(position) ? 0f : Plugin.EnergyUse(wo.GetGroup().GetId())
                 * (effects.Contains(ResonatorEffect.PowerSaver) ? Weaken(Content.PowerSaverFactor) : 1f);
 
             /// <summary>Emergency expansion inside: twice the module slots, every other module at half strength.</summary>
@@ -344,6 +344,7 @@ namespace MeteorMagnet
         // When the beacons call the next shower (NaN = no beacon yet).
         float nextShower = float.NaN;
         int displayCount;
+        readonly List<WorldObject> displays = [];
         readonly Dictionary<int, Light> glows = [];
         // Vanilla container sizes by group id, used as the base size of Mk2/Mk3 storage.
         readonly Dictionary<string, int> baseSizes = [];
@@ -432,6 +433,7 @@ namespace MeteorMagnet
             beaconEffects.Clear();
             beaconModules.Clear();
             displayCount = 0;
+            displays.Clear();
             var planetHash = CurrentPlanetHash();
             foreach (var wo in WorldObjectsHandler.Instance.GetConstructedWorldObjects())
             {
@@ -465,6 +467,7 @@ namespace MeteorMagnet
                         else
                         {
                             displayCount++;
+                            displays.Add(wo);
                         }
                     }
                     continue;
@@ -1331,9 +1334,19 @@ namespace MeteorMagnet
             {
                 demand += m.Draw;
             }
-            demand += relays.Count * Plugin.EnergyUse(Content.Relay.id);
-            demand += displayCount * Plugin.EnergyUse(Content.Display.id);
-            demand += beacons.Count * Plugin.EnergyUse(Content.Beacon.id);
+            // Anything inside the reach of an infinity core's network is powered by the core.
+            foreach (var r in relays)
+            {
+                demand += StorageNetwork.FreelyPowered(r.position) ? 0f : Plugin.EnergyUse(Content.Relay.id);
+            }
+            foreach (var d in displays)
+            {
+                demand += StorageNetwork.FreelyPowered(d.GetPosition()) ? 0f : Plugin.EnergyUse(Content.Display.id);
+            }
+            foreach (var b in beacons)
+            {
+                demand += StorageNetwork.FreelyPowered(b.GetPosition()) ? 0f : Plugin.EnergyUse(Content.Beacon.id);
+            }
             demand += StorageNetwork.Demand();
             return demand;
         }
@@ -2384,7 +2397,8 @@ namespace MeteorMagnet
                     continue;
                 }
                 var isScanner = b is Scanner;
-                var free = b.moduleInventory.GetSize() - b.moduleInventory.GetInsideWorldObjects().Count;
+                // The infinity core lends every module it has, free slots or not.
+                var free = net.SelfPowered ? int.MaxValue : b.moduleInventory.GetSize() - b.moduleInventory.GetInsideWorldObjects().Count;
                 if (free <= 0)
                 {
                     continue;

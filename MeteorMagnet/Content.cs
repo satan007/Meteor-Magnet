@@ -458,8 +458,8 @@ namespace MeteorMagnet
             dropChance = 0.03f,
             nameRu = "Ядро метеорита",
             nameEn = "Meteor Core",
-            descRu = "Плотное ядро, которое иногда остаётся от пойманного метеорита (3%). Нужно для всех модулей и метеорного маяка. Всегда попадает в хранилище захвата мимо фильтра (у Mk1 — в кучку). Продаётся торговой ракетой.",
-            descEn = "A dense core sometimes left by a captured meteor (3%). Needed for every module and the meteor beacon. Always goes to the magnet's storage past the filter (Mk1: to the pile). Sells by trade rocket.",
+            descRu = "Плотное ядро, которое иногда остаётся от пойманного метеорита. Нужно для всех модулей и метеорного маяка. Всегда попадает в хранилище захвата мимо фильтра (у Mk1 — в кучку). Продаётся торговой ракетой.",
+            descEn = "A dense core sometimes left by a captured meteor. Needed for every module and the meteor beacon. Always goes to the magnet's storage past the filter (Mk1: to the pile). Sells by trade rocket.",
         };
 
         /// <summary>
@@ -473,8 +473,8 @@ namespace MeteorMagnet
             dropChance = 0.02f,
             nameRu = "Метеорный чертёж",
             nameEn = "Meteor Blueprint",
-            descRu = "Данные, записанные в ядре пойманного метеорита (2%). Положи в ячейку модулей сканера или захвата: чертёж расшифруется и откроет рецепт случайного закрытого модуля. Если закрытых не осталось — превратится в ядро метеорита.",
-            descEn = "Data stored in the core of a captured meteor (2%). Put it into a scanner's or magnet's module slot: it is decoded and opens the recipe of a random locked module. With none left, it turns into a meteor core.",
+            descRu = "Данные, записанные в ядре пойманного метеорита. Попадаются редко. Положи в ячейку модулей сканера или захвата: чертёж расшифруется и откроет рецепт случайного закрытого модуля. Если закрытых не осталось — превратится в ядро метеорита.",
+            descEn = "Data stored in the core of a captured meteor. Rare. Put it into a scanner's or magnet's module slot: it is decoded and opens the recipe of a random locked module. With none left, it turns into a meteor core.",
         };
 
         /// <summary>
@@ -575,14 +575,12 @@ namespace MeteorMagnet
             id = id, recipe = recipe, coreTier = tier, channels = ChannelsOfTier(tier), radiusFactor = radius, craftStation = station, unlockTi = unlockTi,
             baseItemIds = ["Iridium", "Osmium", "Rod-uranium"],
             nameRu = ru, nameEn = en,
-            descRu = descRu + " В контроллере хранилища: " + (tier >= UnlimitedTier ? "каналы без ограничений" : ChannelsOfTier(tier) + " каналов")
-                + ", радиусы связи сети ×" + radius.ToString("0.##")
-                + (SelfPowered(tier) ? ", сеть питается от самого ядра — контроллер и все устройства не потребляют энергию."
-                    : ", контроллер потребляет ×" + ControllerDrawFactor(tier).ToString("0.##") + "."),
-            descEn = descEn + " In a storage controller: " + (tier >= UnlimitedTier ? "unlimited channels" : ChannelsOfTier(tier) + " channels")
-                + ", network link radii x" + radius.ToString("0.##")
-                + (SelfPowered(tier) ? ", the core powers the network itself - the controller and every device draw nothing."
-                    : ", controller draw x" + ControllerDrawFactor(tier).ToString("0.##") + "."),
+            descRu = descRu + (SelfPowered(tier)
+                ? " В контроллере хранилища: каналы без ограничений, сеть дотягивается дальше всех и питается от самого ядра."
+                : " В контроллере хранилища: больше каналов и дальше связь, чем у ядра прошлого тира, но и энергии нужно больше."),
+            descEn = descEn + (SelfPowered(tier)
+                ? " In a storage controller: unlimited channels, the farthest reach, and the core powers the network itself."
+                : " In a storage controller: more channels and a longer reach than the previous tier, but it needs more power."),
         };
 
         /// <summary>Planet cores (tier 5): each made with a resource found only on that planet.</summary>
@@ -728,8 +726,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.6f, 0.2f),
                 nameRu = "Доломитовый концентратор",
                 nameEn = "Dolomite Concentrator",
-                descRu = "Модуль гравитационного захвата. +50% ресурсов с каждого метеорита.",
-                descEn = "Meteor Magnet module. +50% resources from every meteor.",
+                descRu = "Модуль гравитационного захвата. Больше ресурсов с каждого метеорита.",
+                descEn = "Meteor Magnet module. More resources from every meteor.",
             },
             new Resonator
             {
@@ -740,8 +738,8 @@ namespace MeteorMagnet
                 color = new Color(0.3f, 1f, 0.6f),
                 nameRu = "Селеновая линза",
                 nameEn = "Selenium Lens",
-                descRu = "Модуль сканера. Удваивает радиус сканирования. На сканере Mk3 (вся планета) вместо этого наводится вдвое быстрее.",
-                descEn = "Scanner module. Doubles the scan radius. On a Mk3 scanner (whole planet) it locks on twice as fast instead.",
+                descRu = "Модуль сканера. Сканер видит дальше. Если он уже видит всю планету — наводится быстрее.",
+                descEn = "Scanner module. The scanner sees farther. If it already sees the whole planet, it locks on faster instead.",
             },
             new Resonator
             {
@@ -752,8 +750,8 @@ namespace MeteorMagnet
                 color = new Color(0.7f, 1f, 0.1f),
                 nameRu = "Токсичный катализатор",
                 nameEn = "Toxic Catalyst",
-                descRu = "Модуль гравитационного захвата. Каждый пойманный ресурс с шансом 25% удваивается.",
-                descEn = "Meteor Magnet module. Every captured resource has a 25% chance to be doubled.",
+                descRu = "Модуль гравитационного захвата. Пойманные ресурсы иногда удваиваются.",
+                descEn = "Meteor Magnet module. Captured resources are sometimes doubled.",
             },
             new Resonator
             {
@@ -803,8 +801,8 @@ namespace MeteorMagnet
                 color = new Color(0.4f, 0.9f, 1f),
                 nameRu = "Стабилизатор поля",
                 nameEn = "Field Stabilizer",
-                descRu = "Модуль гравитационного захвата. Вдвое снижает шанс срыва захвата, в том числе для редких метеоритов.",
-                descEn = "Meteor Magnet module. Halves the chance that a capture fails, rare meteors included.",
+                descRu = "Модуль гравитационного захвата. Захват срывается реже, в том числе с редкими метеоритами.",
+                descEn = "Meteor Magnet module. Captures slip less often, rare meteors included.",
             },
             new Resonator
             {
@@ -814,8 +812,8 @@ namespace MeteorMagnet
                 color = new Color(0.5f, 1f, 0.4f),
                 nameRu = "Модуль экономии",
                 nameEn = "Power Saver Module",
-                descRu = "Модуль сканера или захвата. Постройка потребляет на 40% меньше энергии.",
-                descEn = "Scanner or magnet module. The building draws 40% less power.",
+                descRu = "Модуль сканера или захвата. Постройка потребляет меньше энергии.",
+                descEn = "Scanner or magnet module. The building draws less power.",
             },
             new Resonator
             {
@@ -826,8 +824,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.85f, 0.3f),
                 nameRu = "Модуль расширения",
                 nameEn = "Expansion Module",
-                descRu = "Модуль гравитационного захвата. Захват держит на один метеорит больше.",
-                descEn = "Meteor Magnet module. The magnet holds one more meteor at a time.",
+                descRu = "Модуль гравитационного захвата. Захват держит больше метеоритов одновременно.",
+                descEn = "Meteor Magnet module. The magnet holds more meteors at a time.",
             },
             new Resonator
             {
@@ -837,8 +835,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.35f, 0.35f),
                 nameRu = "Модуль наведения",
                 nameEn = "Guidance Module",
-                descRu = "Модуль сканера. Захват цели на 30% быстрее.",
-                descEn = "Scanner module. Locks on 30% faster.",
+                descRu = "Модуль сканера. Сканер наводится на цель быстрее.",
+                descEn = "Scanner module. The scanner locks on faster.",
             },
             new Resonator
             {
@@ -870,8 +868,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.55f, 0.1f),
                 nameRu = "Модуль частоты маяка",
                 nameEn = "Beacon Frequency Module",
-                descRu = "Модуль метеорного маяка. Маяк вызывает дождь на 25% чаще.",
-                descEn = "Meteor beacon module. The beacon calls showers 25% more often.",
+                descRu = "Модуль метеорного маяка. Маяк вызывает дождь чаще.",
+                descEn = "Meteor beacon module. The beacon calls showers more often.",
             },
             new Resonator
             {
@@ -892,8 +890,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.4f, 0.1f),
                 nameRu = "Модуль разрушителя",
                 nameEn = "Destroyer Module",
-                descRu = "Модуль гравитационного захвата. Поле не держит метеорит, а дробит его: захват никогда не срывается, но ресурсов вдвое меньше.",
-                descEn = "Meteor Magnet module. The field crushes the meteor instead of holding it: the capture never slips, but there is half the loot.",
+                descRu = "Модуль гравитационного захвата. Поле не держит метеорит, а дробит его: захват не срывается, но ресурсов меньше.",
+                descEn = "Meteor Magnet module. The field crushes the meteor instead of holding it: the capture does not slip, but there is less loot.",
             },
             new Resonator
             {
@@ -925,8 +923,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.85f, 0.2f),
                 nameRu = "Охотник за ачивками",
                 nameEn = "Achievement Hunter",
-                descRu = "Модуль гравитационного захвата. «Первому игроку приготовиться!» Пойманные метеориты летят прямо в тебя, зато ресурсов вдвое больше (ядра и чертежи не удваиваются). Удар ближе 15 м от тебя — «на волосок»: за 1, 10 и 25 таких — медный, нефритовый и хрустальный ключи, за 50 — пасхалка Холлидея.",
-                descEn = "Meteor Magnet module. \"Ready Player One!\" Captured meteors come straight at you, but bring double resources (cores and blueprints are not doubled). An impact within 15 m of you is a close call: 1, 10 and 25 of them give the copper, jade and crystal keys, 50 - Halliday's egg.",
+                descRu = "Модуль гравитационного захвата. «Первому игроку приготовиться!» Пойманные метеориты летят прямо в тебя, зато ресурсов больше. Пережил удар совсем рядом — ты на шаг ближе к ключам… и к пасхалке Холлидея.",
+                descEn = "Meteor Magnet module. \"Ready Player One!\" Captured meteors come straight at you, but bring more resources. Survive a hit right next to you and you are a step closer to the keys... and Halliday's egg.",
             },
             new Resonator
             {
@@ -936,8 +934,8 @@ namespace MeteorMagnet
                 color = new Color(1f, 0.2f, 0.2f),
                 nameRu = "Модуль экстренного расширения",
                 nameEn = "Emergency Expansion Module",
-                descRu = "Модуль сканера или захвата. Удваивает число ячеек модулей, но все остальные модули в постройке работают вдвое слабее (тиры округляются вниз: T1 перестаёт работать).",
-                descEn = "Scanner or magnet module. Doubles the module slots, but every other module in the building works at half strength (tiers round down: T1 stops working).",
+                descRu = "Модуль сканера или захвата. Больше ячеек модулей, но все остальные модули в постройке работают слабее.",
+                descEn = "Scanner or magnet module. More module slots, but every other module in the building works weaker.",
             },
         ];
 
