@@ -244,12 +244,16 @@ namespace MeteorMagnet
         }
 
         /// <summary>The nearest node whose circle covers the point, or -1.</summary>
-        static int Nearest(List<(int id, Vector3 pos, float radius, int parent, WorldObject device)> nodes, Vector3 p)
+        static int Nearest(List<Node> nodes, Vector3 p, bool relaysOnly = false, int except = -1)
         {
             var best = -1;
             var bestDist = float.MaxValue;
             for (int i = 0; i < nodes.Count; i++)
             {
+                if (i == except || (relaysOnly && !nodes[i].relay))
+                {
+                    continue;
+                }
                 var d = Flat(nodes[i].pos, p);
                 if (d <= nodes[i].radius && d < bestDist)
                 {
@@ -260,6 +264,66 @@ namespace MeteorMagnet
             return best;
         }
 
+        /// <summary>A building the network reached, with the node it was reached from.</summary>
+        struct Node
+        {
+            internal int id;
+            internal Vector3 pos;
+            internal float radius;
+            internal int parent;
+            /// <summary>The device taking a channel; null for the controller, relays and buildings that only pass the link on.</summary>
+            internal WorldObject device;
+            internal bool relay;
+        }
+
+        /// <summary>
+        /// Devices hook onto a relay whenever one covers them, and only otherwise onto the nearest building of the network.
+        /// </summary>
+        static void PreferRelays(List<Node> nodes)
+        {
+            for (int i = 1; i < nodes.Count; i++)
+            {
+                if (nodes[i].relay || nodes[nodes[i].parent].relay)
+                {
+                    continue;
+                }
+                var relay = Nearest(nodes, nodes[i].pos, true, i);
+                if (relay < 0 || Descends(nodes, relay, i))
+                {
+                    continue;
+                }
+                var n = nodes[i];
+                n.parent = relay;
+                nodes[i] = n;
+            }
+        }
+
+        static int RelaysInUse(List<Node> nodes)
+        {
+            var parents = new HashSet<int>();
+            foreach (var node in nodes)
+            {
+                if (node.parent >= 0 && nodes[node.parent].relay)
+                {
+                    parents.Add(node.parent);
+                }
+            }
+            return parents.Count;
+        }
+
+        /// <summary>Whether the node hangs (through any number of links) on the given ancestor.</summary>
+        static bool Descends(List<Node> nodes, int node, int ancestor)
+        {
+            for (var n = node; n >= 0; n = nodes[n].parent)
+            {
+                if (n == ancestor)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         static float Flat(Vector3 a, Vector3 b)
         {
             var d = a - b;
@@ -267,8 +331,10 @@ namespace MeteorMagnet
             return d.magnitude;
         }
 
+        /// <param name="passers">The mod's other buildings (magnets and scanners without the transmitter, displays, beacons):
+        /// they take no channel but pass the link on like any device.</param>
         internal static void Build(List<WorldObject> controllers, List<WorldObject> drives, List<WorldObject> terminals, List<WorldObject> magnets,
-            List<WorldObject> hubs, List<(WorldObject wo, Vector3 position)> relays)
+            List<WorldObject> hubs, List<(WorldObject wo, Vector3 position)> relays, List<WorldObject> passers)
         {
             Nets.Clear();
             var taken = new HashSet<WorldObject>();
@@ -291,9 +357,9 @@ namespace MeteorMagnet
                 // Reach: a tree grown from the controller. Relays carry the link far (60 m), every other device of the
                 // network passes it on to neighbours close by (12 m), so a compact base needs no relays at all.
                 // Each node remembers the node it was reached from, for the channel spirals.
-                var nodes = new List<(int id, Vector3 pos, float radius, int parent, WorldObject device)>
+                var nodes = new List<Node>
                 {
-                    (c.GetId(), c.GetPosition(), Content.LinkRadius * net.radiusFactor, -1, null),
+                    new() { id = c.GetId(), pos = c.GetPosition(), radius = Content.LinkRadius * net.radiusFactor, parent = -1 },
                 };
                 var candidates = new List<(WorldObject wo, Vector3 pos, float radius, int kind)>();
                 foreach (var r in relays)
@@ -310,11 +376,15 @@ namespace MeteorMagnet
                         }
                     }
                 }
-                // 0 drive, 1 terminal, 2 linked magnet or scanner, 3 module distributor.
+                // 0 drive, 1 terminal, 2 linked magnet or scanner, 3 module distributor, 4 only passes the link on.
                 AddDevices(drives, 0);
                 AddDevices(terminals, 1);
                 AddDevices(magnets, 2);
                 AddDevices(hubs, 3);
+                foreach (var d in passers)
+                {
+                    candidates.Add((d, d.GetPosition(), Content.DeviceLinkRadius * net.radiusFactor, 4));
+                }
                 var joined = new bool[candidates.Count];
                 bool grew;
                 do
@@ -327,11 +397,20 @@ namespace MeteorMagnet
                         {
                             joined[i] = true;
                             var cand = candidates[i];
-                            nodes.Add((cand.wo.GetId(), cand.pos, cand.radius, parent, cand.kind >= 0 ? cand.wo : null));
+                            nodes.Add(new Node
+                            {
+                                id = cand.wo.GetId(),
+                                pos = cand.pos,
+                                radius = cand.radius,
+                                parent = parent,
+                                device = cand.kind >= 0 && cand.kind <= 3 ? cand.wo : null,
+                                relay = cand.kind < 0,
+                            });
                             grew = true;
                         }
                     }
                 } while (grew);
+                PreferRelays(nodes);
 
                 // Channels go to the devices reached first (closest to the controller along the tree).
                 for (int i = 1; i < nodes.Count; i++)
@@ -380,11 +459,11 @@ namespace MeteorMagnet
                         through[n] = through.TryGetValue(n, out var k) ? k + 1 : 1;
                     }
                 }
-                foreach (var kv in through)
+                // Every link is drawn, with or without channels running through it.
+                for (int i = 1; i < nodes.Count; i++)
                 {
-                    var child = nodes[kv.Key];
-                    var parent = nodes[child.parent];
-                    net.links.Add((parent.id, parent.pos, child.id, child.pos, kv.Value));
+                    var parent = nodes[nodes[i].parent];
+                    net.links.Add((parent.id, parent.pos, nodes[i].id, nodes[i].pos, through.TryGetValue(i, out var k) ? k : 0));
                 }
                 foreach (var n in nodes)
                 {
@@ -394,6 +473,8 @@ namespace MeteorMagnet
 
                 var state = "core " + (net.coreId ?? "none") + " (" + Content.ChannelsText(net.channels) + " channels, radii x" + net.radiusFactor + "), drives " + net.drives.Count
                     + ", terminals " + net.terminals.Count + ", linked magnets/scanners " + net.magnets.Count + ", distributors " + net.hubs.Count + ", without a channel " + net.unserved.Count
+                    + ", links " + net.links.Count + " (" + net.links.FindAll(link => link.channels > 0).Count + " with channels, "
+                    + RelaysInUse(nodes) + " relays in use)"
                     + ", disks " + net.disks.Count + ", stored " + net.Stored + "/" + net.Capacity + ", draw " + net.Draw().ToString("0.#") + " kW";
                 if (!logged.TryGetValue(c.GetId(), out var last) || last != state)
                 {

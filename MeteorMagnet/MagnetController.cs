@@ -307,6 +307,11 @@ namespace MeteorMagnet
             internal bool released;
             /// <summary>The meteor was caught passing through the ground once and put back on the surface.</summary>
             internal bool unTunneled;
+            /// <summary>When the meteor was put back on the surface; hidden if the game still has not crashed it soon after.</summary>
+            internal float unTunneledAt;
+            internal bool hidden;
+            /// <summary>Whether the game's impact point was moved with the target at least once.</summary>
+            internal bool impactSteered;
             /// <summary>The game's acceleration before capture, to put back if the meteor stalls.</summary>
             internal float originalAcceleration = float.NaN;
             /// <summary>When the meteor was first seen standing still (0 = moving).</summary>
@@ -405,6 +410,7 @@ namespace MeteorMagnet
                 nextScan = Time.time + ScanInterval;
                 RefreshBuildings();
                 BuildNetworks();
+                DrawChannels();
                 UpdatePower();
                 ScanForMeteors();
                 UpdateDisplays();
@@ -548,8 +554,18 @@ namespace MeteorMagnet
                     linked.Add(b.wo);
                 }
             }
-            StorageNetwork.Build(storageControllers, storageDrives, storageTerminals, linked, storageHubs, relays);
-            DrawChannels();
+            // Everything else the mod builds passes the storage link on without taking a channel.
+            var passers = new List<WorldObject>();
+            foreach (var b in AllBuildings())
+            {
+                if (!linked.Contains(b.wo))
+                {
+                    passers.Add(b.wo);
+                }
+            }
+            passers.AddRange(displays);
+            passers.AddRange(beacons);
+            StorageNetwork.Build(storageControllers, storageDrives, storageTerminals, linked, storageHubs, relays, passers);
             ApplyNetworkModules(planetHash);
             FlushBuffers();
             UpdateSummaries();
@@ -586,6 +602,8 @@ namespace MeteorMagnet
                     candidates.Add((m.wo, m.position, Content.DeviceLinkRadius * factor, m.tier.color, m));
                 }
                 var joined = new bool[candidates.Count];
+                // Circles of the link area that belong to relays: magnets hook onto those first.
+                var relayNodes = new HashSet<int>();
                 bool grew;
                 do
                 {
@@ -597,12 +615,16 @@ namespace MeteorMagnet
                             continue;
                         }
                         var c = candidates[i];
-                        var parent = CoveringNode(s.link, c.pos);
+                        var parent = CoveringNode(s.link, c.pos, c.magnet != null ? relayNodes : null);
                         if (parent < 0)
                         {
                             continue;
                         }
                         joined[i] = true;
+                        if (c.magnet == null)
+                        {
+                            relayNodes.Add(s.link.Count);
+                        }
                         s.link.Add((c.pos, c.radius));
                         nodes.Add((c.wo.GetId(), c.pos, c.color));
                         if (c.magnet != null)
@@ -620,14 +642,7 @@ namespace MeteorMagnet
                 }
                 while (grew);
             }
-            if (drawLines)
-            {
-                signalLines.End();
-            }
-            else
-            {
-                signalLines.Clear();
-            }
+            // The lines are finished (and stale ones removed) in DrawChannels, after the storage links are added.
 
             foreach (var m in magnets)
             {
@@ -642,20 +657,30 @@ namespace MeteorMagnet
             }
         }
 
-        /// <summary>The nearest circle of the area that covers the point, or -1.</summary>
-        static int CoveringNode(List<(Vector3 center, float radius)> area, Vector3 p)
+        /// <summary>
+        /// The nearest circle of the area that covers the point, or -1. With preferred circles given (relays),
+        /// the nearest of those wins whenever one covers the point.
+        /// </summary>
+        static int CoveringNode(List<(Vector3 center, float radius)> area, Vector3 p, HashSet<int> preferred = null)
         {
             var best = -1;
             var bestDist = float.MaxValue;
+            var bestPreferred = false;
             for (int i = 0; i < area.Count; i++)
             {
                 var d = area[i].center - p;
                 d.y = 0;
                 var dist = d.sqrMagnitude;
-                if (dist <= area[i].radius * area[i].radius && dist < bestDist)
+                if (dist > area[i].radius * area[i].radius)
+                {
+                    continue;
+                }
+                var isPreferred = preferred != null && preferred.Contains(i);
+                if ((isPreferred && !bestPreferred) || (isPreferred == bestPreferred && dist < bestDist))
                 {
                     bestDist = dist;
                     best = i;
+                    bestPreferred = isPreferred;
                 }
             }
             return best;
@@ -2006,6 +2031,32 @@ namespace MeteorMagnet
                     // Follows the player until the final dive.
                     c.target = PlayerPosition();
                 }
+                if (c.unTunneled)
+                {
+                    // Put back on the surface and the game still has not crashed it: hide it at least.
+                    if (!c.hidden && Time.time - c.unTunneledAt > Content.CrashGrace)
+                    {
+                        c.hidden = true;
+                        var hidden = 0;
+                        foreach (var r in asteroid.GetComponentsInChildren<Renderer>())
+                        {
+                            if (r.enabled)
+                            {
+                                r.enabled = false;
+                                hidden++;
+                            }
+                        }
+                        Plugin.Log("Meteor put on the surface at " + pos + " did not crash in " + Content.CrashGrace + " s (impact point "
+                            + Plugin.GetImpactPoint(asteroid) + "): hidden (" + hidden + " renderers) until the game registers the crash");
+                    }
+                    continue;
+                }
+                // The game crashes a meteor at the impact point it picked at spawn; move that point with the pull.
+                if (Plugin.SetImpactPoint(asteroid, c.target) && !c.impactSteered)
+                {
+                    c.impactSteered = true;
+                    Plugin.Log(Describe(asteroid) + ": game impact point moved to the pull target " + c.target);
+                }
                 var dir = c.target - pos;
                 var dist = dir.magnitude;
                 var prev = c.lastPosition;
@@ -2034,25 +2085,20 @@ namespace MeteorMagnet
 
                 // Too fast for the game's own impact check: it went through the ground this frame and will only
                 // crash deep below. Show the impact where it hit the surface and hide the meteor from then on.
-                if (prev.HasValue && !c.unTunneled && TryGroundBetween(prev.Value, pos, out var surface))
+                if (prev.HasValue && TryGroundBetween(prev.Value, pos, out var surface))
                 {
                     c.unTunneled = true;
+                    c.unTunneledAt = Time.time;
+                    // Back onto the surface, right on the game's impact point, so the game crashes it there itself.
+                    t.position = surface;
+                    Plugin.SetImpactPoint(asteroid, surface);
                     CaptureEffects.Flash(surface + Vector3.up * 2f, c.deflected ? Color.red : c.magnet.tier.color, 8f, 40f);
                     if (c.hunting)
                     {
                         HunterImpact(surface);
                     }
-                    var hidden = 0;
-                    foreach (var r in asteroid.GetComponentsInChildren<Renderer>())
-                    {
-                        if (r.enabled)
-                        {
-                            r.enabled = false;
-                            hidden++;
-                        }
-                    }
-                    Plugin.Log("Meteor hit the ground at " + surface + " (speed " + speed.ToString("0")
-                        + " m/s): impact shown there, meteor hidden (" + hidden + " renderers) until the game registers the crash");
+                    Plugin.Log("Meteor passed through the ground at " + surface + " (speed " + speed.ToString("0")
+                        + " m/s, " + Vector3.Distance(surface, c.target).ToString("0") + " m from the target): put back on the surface, impact point moved there");
                     if (!loggedAsteroidAnatomy)
                     {
                         loggedAsteroidAnatomy = true;
@@ -2070,11 +2116,11 @@ namespace MeteorMagnet
                     continue;
                 }
                 var wanted = Quaternion.LookRotation(dir / dist);
-                // Close to the target there is no room left to curve in: aim once into the ground just below
-                // the target and stop steering, so the meteor dives in instead of circling or bouncing around it.
+                // Close to the target there is no room left to curve in: aim once straight at the target (the game's
+                // impact point now) and stop steering, so the meteor dives in instead of circling or bouncing around it.
                 if (dist < Content.SnapDistance)
                 {
-                    t.rotation = Quaternion.LookRotation((c.target + Vector3.down * Content.DiveDepth - pos).normalized);
+                    t.rotation = Quaternion.LookRotation(dir / dist);
                     c.released = true;
                     Plugin.Log("Meteor dives in: " + dist.ToString("0") + " m from target " + c.target + ", speed " + speed.ToString("0") + " m/s"
                         + (c.deflected ? " (thrown away)" : ""));
@@ -2347,22 +2393,32 @@ namespace MeteorMagnet
 
         readonly ChannelLines channelLines = new();
 
-        /// <summary>The storage network's links with one spiral per channel running through them.</summary>
+        /// <summary>
+        /// The storage network's links: a link line wherever the radii reach (shared with the meteor network's
+        /// line between the same buildings), and around it one spiral per channel running through it.
+        /// </summary>
         void DrawChannels()
         {
             if (!Plugin.ShowSignalLines)
             {
+                signalLines.Clear();
                 channelLines.Clear();
                 return;
             }
             channelLines.Begin();
+            var color = Content.StorageController.color;
             foreach (var net in StorageNetwork.Nets)
             {
                 foreach (var l in net.links)
                 {
-                    channelLines.Link(l.fromId, l.from, l.toId, l.to, l.channels, Content.StorageController.color);
+                    signalLines.Edge(l.fromId, l.from, color, l.toId, l.to, color);
+                    if (l.channels > 0)
+                    {
+                        channelLines.Link(l.fromId, l.from, l.toId, l.to, l.channels, color);
+                    }
                 }
             }
+            signalLines.End();
             channelLines.End();
         }
 

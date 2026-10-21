@@ -16,6 +16,8 @@ namespace MeteorMagnet
         /// <summary>The base building actually used, set at registration.</summary>
         internal string resolvedBaseId;
         internal string recipe;
+        /// <summary>Earlier default recipes: a config still holding one is moved to the current default.</summary>
+        internal string[] previousRecipes = [];
         internal float unlockTi;
         internal Color color;
         /// <summary>Power draw in the game's energy units (kW); the network works only while the base has enough power.</summary>
@@ -257,8 +259,8 @@ namespace MeteorMagnet
         /// <summary>A captured meteor slower than this (m/s) for StallTime seconds gets its acceleration back.</summary>
         internal const float StallSpeed = 2f;
         internal const float StallTime = 1.5f;
-        /// <summary>How far below the target the final dive aims, so the meteor surely hits the ground.</summary>
-        internal const float DiveDepth = 10f;
+        /// <summary>Seconds a meteor put back on the surface may wait for the game's crash before it is hidden.</summary>
+        internal const float CrashGrace = 1f;
         internal const float DuplicateChance = 0.25f;
         internal const float ForwardRadius = 40f;
 
@@ -307,7 +309,8 @@ namespace MeteorMagnet
                 captureSlots = 1,
                 failChance = 0.20f,
                 moduleSlots = 1,
-                recipe = "Iron,Iron,Iron,Titanium,Titanium,Titanium,Magnesium,Magnesium,Silicon,Silicon",
+                recipe = "Iron,Iron,Iron,Titanium,Titanium,Magnesium,Magnesium,Silicon,Silicon",
+                previousRecipes = ["Iron,Iron,Iron,Titanium,Titanium,Titanium,Magnesium,Magnesium,Silicon,Silicon"],
                 unlockTi = 0f,
                 color = new Color(0.35f, 0.55f, 1f),
                 nameRu = "Гравитационный захват Mk1",
@@ -323,7 +326,8 @@ namespace MeteorMagnet
                 captureSlots = 2,
                 failChance = 0.12f,
                 moduleSlots = 3,
-                recipe = "Alloy,Alloy,Alloy,Aluminium,Aluminium,Cobalt,Cobalt,Titanium,Titanium,Iridium",
+                recipe = "Alloy,Alloy,Alloy,Aluminium,Aluminium,Cobalt,Cobalt,Titanium,Iridium",
+                previousRecipes = ["Alloy,Alloy,Alloy,Aluminium,Aluminium,Cobalt,Cobalt,Titanium,Titanium,Iridium"],
                 unlockTi = 1000000f,
                 color = new Color(0.55f, 0.25f, 1f),
                 nameRu = "Гравитационный захват Mk2",
@@ -339,7 +343,8 @@ namespace MeteorMagnet
                 captureSlots = 3,
                 failChance = 0.08f,
                 moduleSlots = 5,
-                recipe = "Alloy,Alloy,Alloy,Alloy,Rod-uranium,Rod-uranium,Iridium,Iridium,Osmium,Osmium,Zeolite",
+                recipe = "Alloy,Alloy,Alloy,Rod-uranium,Rod-uranium,Iridium,Iridium,Osmium,Zeolite",
+                previousRecipes = ["Alloy,Alloy,Alloy,Alloy,Rod-uranium,Rod-uranium,Iridium,Iridium,Osmium,Osmium,Zeolite"],
                 unlockTi = 100000000f,
                 color = new Color(1f, 0.3f, 0.75f),
                 nameRu = "Гравитационный захват Mk3",
@@ -361,7 +366,8 @@ namespace MeteorMagnet
                 trackSlots = 2,
                 lockTime = 2.5f,
                 seesRare = false,
-                recipe = "Iron,Iron,Iron,Silicon,Silicon,Silicon,Cobalt,Cobalt,Titanium,Titanium",
+                recipe = "Iron,Iron,Silicon,Silicon,Silicon,Cobalt,Cobalt,Titanium,Titanium",
+                previousRecipes = ["Iron,Iron,Iron,Silicon,Silicon,Silicon,Cobalt,Cobalt,Titanium,Titanium"],
                 unlockTi = 0f,
                 color = new Color(0.3f, 1f, 0.9f),
                 nameRu = "Метеорный сканер Mk1",
@@ -379,7 +385,8 @@ namespace MeteorMagnet
                 trackSlots = 4,
                 lockTime = 2.0f,
                 seesRare = true,
-                recipe = "Alloy,Alloy,Aluminium,Aluminium,Silicon,Silicon,Cobalt,Cobalt,Iridium,Iridium",
+                recipe = "Alloy,Alloy,Aluminium,Aluminium,Silicon,Silicon,Cobalt,Iridium,Iridium",
+                previousRecipes = ["Alloy,Alloy,Aluminium,Aluminium,Silicon,Silicon,Cobalt,Cobalt,Iridium,Iridium"],
                 unlockTi = 1000000f,
                 color = new Color(0.3f, 0.85f, 1f),
                 nameRu = "Метеорный сканер Mk2",
@@ -398,7 +405,8 @@ namespace MeteorMagnet
                 trackSlots = 6,
                 lockTime = 1.5f,
                 seesRare = true,
-                recipe = "Alloy,Alloy,Alloy,Osmium,Osmium,Iridium,Iridium,Rod-uranium,Rod-uranium,PulsarQuartz,MagnetarQuartz,Zeolite",
+                recipe = "Alloy,Alloy,Osmium,Iridium,Rod-uranium,Rod-uranium,PulsarQuartz,MagnetarQuartz,Zeolite",
+                previousRecipes = ["Alloy,Alloy,Alloy,Osmium,Osmium,Iridium,Iridium,Rod-uranium,Rod-uranium,PulsarQuartz,MagnetarQuartz,Zeolite"],
                 unlockTi = 100000000f,
                 color = new Color(0.6f, 0.95f, 1f),
                 nameRu = "Метеорный сканер Mk3",
@@ -442,7 +450,8 @@ namespace MeteorMagnet
             baseGroupIds = ["Beacon", "Container1"],
             intervalMinutes = 20f,
             moduleSlots = 2,
-            recipe = "MeteorCore,MeteorCore,MeteorCore,Alloy,Alloy,Alloy,Osmium,Osmium,Rod-uranium,Rod-uranium,Iridium,Iridium",
+            recipe = "MeteorCore,MeteorCore,MeteorCore,Alloy,Alloy,Osmium,Rod-uranium,Rod-uranium,Iridium",
+                previousRecipes = ["MeteorCore,MeteorCore,MeteorCore,Alloy,Alloy,Alloy,Osmium,Osmium,Rod-uranium,Rod-uranium,Iridium,Iridium"],
             unlockTi = 100000000f,
             color = new Color(1f, 0.45f, 0.15f),
             nameRu = "Метеорный маяк",

@@ -57,6 +57,11 @@ namespace MeteorMagnet
                 return;
             }
             var key = fromId + ">" + toId;
+            // One line per pair of buildings: the meteor and storage networks share the link between them.
+            if (used.Contains(key) || used.Contains(toId + ">" + fromId))
+            {
+                return;
+            }
             used.Add(key);
             if (!lines.TryGetValue(key, out var lr) || lr == null)
             {

@@ -63,6 +63,7 @@ namespace MeteorMagnet
         static AccessTools.FieldRef<Asteroid, bool> fAsteroidHasCrashed;
         static FieldInfo fAsteroidMaxAcceleration;
         static FieldInfo fAsteroidInitialSpeed;
+        static FieldInfo fAsteroidImpactPoint;
 
         static string pluginDir;
 
@@ -96,7 +97,13 @@ namespace MeteorMagnet
 
             foreach (var def in Content.Buildings)
             {
-                recipes[def.id] = Config.Bind(def.ConfigSection, "Recipe", def.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются.");
+                var recipe = Config.Bind(def.ConfigSection, "Recipe", def.recipe, "Рецепт: id предметов через запятую. Неизвестные id пропускаются. Игра показывает не больше 9 предметов рецепта.");
+                if (Array.IndexOf(def.previousRecipes, recipe.Value) >= 0)
+                {
+                    Logger.LogInfo(def.id + ": recipe updated from the old default '" + recipe.Value + "' to '" + def.recipe + "'");
+                    recipe.Value = def.recipe;
+                }
+                recipes[def.id] = recipe;
                 unlocks[def.id] = Config.Bind(def.ConfigSection, "UnlockAtTerraformation", def.unlockTi, "Индекс терраформации (Ti), при котором открывается эта постройка. 0 = доступно сразу.");
                 var energy = Config.Bind(def.ConfigSection, "EnergyUse", def.energy, "Потребление энергии постройкой (в единицах игры, кВт). Применяется после перезапуска игры.");
                 if (Array.IndexOf(def.previousEnergy, energy.Value) >= 0)
@@ -157,6 +164,12 @@ namespace MeteorMagnet
             fAsteroidHasCrashed = TryFieldRef<Asteroid, bool>("hasCrashed");
             fAsteroidMaxAcceleration = AccessTools.Field(typeof(Asteroid), "maxAcceleration");
             fAsteroidInitialSpeed = AccessTools.Field(typeof(Asteroid), "initialSpeed");
+            fAsteroidImpactPoint = AccessTools.Field(typeof(Asteroid), "_impactPoint");
+            if (fAsteroidImpactPoint == null || fAsteroidImpactPoint.FieldType != typeof(Vector3))
+            {
+                Logger.LogWarning("Asteroid._impactPoint not found; pulled meteors may fly through the ground.");
+                fAsteroidImpactPoint = null;
+            }
             if (fAsteroidMaxAcceleration == null || fAsteroidMaxAcceleration.FieldType != typeof(float))
             {
                 Logger.LogWarning("Asteroid.maxAcceleration not found; pulled meteors will keep accelerating.");
@@ -258,6 +271,22 @@ namespace MeteorMagnet
                 + (fAsteroidInitialSpeed != null ? ", initialSpeed " + fAsteroidInitialSpeed.GetValue(a) : ""));
             return original;
         }
+
+        /// <summary>
+        /// The point where the game makes the meteor crash. It is worked out once at spawn, so a pulled meteor
+        /// never reaches it and flies on through the ground; it has to follow the pull target.
+        /// </summary>
+        internal static bool SetImpactPoint(Asteroid a, Vector3 point)
+        {
+            if (fAsteroidImpactPoint == null)
+            {
+                return false;
+            }
+            fAsteroidImpactPoint.SetValue(a, point);
+            return true;
+        }
+
+        internal static Vector3? GetImpactPoint(Asteroid a) => fAsteroidImpactPoint == null ? null : (Vector3)fAsteroidImpactPoint.GetValue(a);
 
         internal static void SetAcceleration(Asteroid a, float value)
         {
